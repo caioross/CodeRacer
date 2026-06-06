@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    background-color: #05060a;
+    color: #e6edf3;
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(0, 255, 136, 0.10), transparent 60%),
+      radial-gradient(ellipse 1000px 500px at 90% 90%, rgba(0, 229, 255, 0.06), transparent 60%),
+      linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: auto, auto, 40px 40px, 40px 40px;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(0, 255, 136, 0.3);
+    color: #fff;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #1a1f33;
+    border-radius: 8px;
+    border: 2px solid #05060a;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #2a3050; }
+
+  button { -webkit-tap-highlight-color: transparent; }
+}
+
+@layer components {
+  .glass {
+    background: rgba(15, 18, 32, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .card {
+    @apply rounded-xl border border-bg-line bg-bg-card/70 backdrop-blur;
+  }
+
+  .neon-border {
+    box-shadow:
+      0 0 0 1px rgba(0, 255, 136, 0.35) inset,
+      0 0 24px rgba(0, 255, 136, 0.15);
+  }
+
+  .btn {
+    @apply relative inline-flex items-center justify-center gap-2
+           rounded-md px-4 py-2 font-mono text-sm font-medium
+           transition-all duration-150 active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed
+           select-none;
+  }
+  .btn-primary {
+    @apply btn bg-neon-green text-bg shadow-glow
+           hover:shadow-[0_0_32px_rgba(0,255,136,0.6)];
+    color: #05060a;
+  }
+  .btn-secondary {
+    @apply btn border border-bg-line bg-bg-card/70 text-text
+           hover:border-neon-cyan hover:text-neon-cyan;
+  }
+  .btn-ghost {
+    @apply btn text-text-muted hover:text-text hover:bg-bg-card/50;
+  }
+  .btn-danger {
+    @apply btn border border-neon-red/40 text-neon-red
+           hover:bg-neon-red/10 hover:shadow-glow-red;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-bg-line bg-bg-soft px-3 py-2
+           font-mono text-sm text-text placeholder:text-text-dim
+           focus:outline-none focus:border-neon-green focus:shadow-glow
+           transition-all duration-150;
+  }
+
+  .label {
+    @apply text-xs font-mono uppercase tracking-wider text-text-muted;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full
+           border border-bg-line bg-bg-card/60 px-2.5 py-0.5
+           font-mono text-[11px] uppercase tracking-wider;
+  }
+
+  .terminal-prompt::before {
+    content: "$ ";
+    color: #00ff88;
+    font-weight: 600;
+  }
+
+  .glow-text-green { text-shadow: 0 0 8px rgba(0,255,136,0.6); }
+  .glow-text-cyan { text-shadow: 0 0 8px rgba(0,229,255,0.6); }
+  .glow-text-violet { text-shadow: 0 0 8px rgba(168,85,247,0.6); }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .gradient-text {
+    background: linear-gradient(90deg, #00ff88, #00e5ff, #a855f7, #00ff88);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientShift 6s linear infinite;
+  }
+
+  .mask-fade-r {
+    -webkit-mask-image: linear-gradient(to right, black 75%, transparent);
+    mask-image: linear-gradient(to right, black 75%, transparent);
+  }
+
+  /* Used on code char to mark errors */
+  .char-error {
+    background-color: rgba(255, 56, 96, 0.25);
+    color: #ff8aa3;
+    border-radius: 2px;
+  }
+  .char-done {
+    color: #6c7686;
+  }
+  .char-current {
+    background-color: rgba(0, 255, 136, 0.22);
+    color: #fff;
+    box-shadow: inset 0 -2px 0 #00ff88;
+    border-radius: 2px;
+  }
+}

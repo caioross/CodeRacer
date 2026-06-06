@@ -1,0 +1,34 @@
+# deps
+node_modules
+.pnp
+.pnp.js
+
+# next / build
+.next/
+out/
+dist/
+.vercel/
+
+# env
+.env*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+next-env.d.ts
+
+# binários grandes / mídia pesada
+*.apk
+*.aab
+*.mp4
+*.mov
+*.wav
+*.zip
+*.psd
