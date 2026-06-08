@@ -31,6 +31,20 @@ export function MatrixRain({ opacity = 0.07 }: { opacity?: number }) {
     resize();
     window.addEventListener("resize", resize);
 
+    // Honor reduced-motion: paint one calm static frame and bail out of the loop.
+    const prefersReduced =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
+      ctx.fillStyle = `rgba(0, 255, 136, ${opacity * 2})`;
+      ctx.font = `${fontSize}px ui-monospace, monospace`;
+      for (let i = 0; i < columns; i++) {
+        const ch = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(ch, i * fontSize, ((i * 37) % 40) * fontSize);
+      }
+      return () => window.removeEventListener("resize", resize);
+    }
+
     const draw = (t: number) => {
       if (t - lastTick < 60) {
         rafId = requestAnimationFrame(draw);
@@ -40,7 +54,7 @@ export function MatrixRain({ opacity = 0.07 }: { opacity?: number }) {
       ctx.fillStyle = "rgba(5, 6, 10, 0.18)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = `rgba(0, 255, 136, ${opacity * 3})`;
-      ctx.font = `${fontSize}px JetBrains Mono, monospace`;
+      ctx.font = `${fontSize}px ui-monospace, monospace`;
       for (let i = 0; i < drops.length; i++) {
         const ch = chars[Math.floor(Math.random() * chars.length)];
         const x = i * fontSize;

@@ -106,10 +106,16 @@ export function HomeView() {
       <section className="relative z-10 mx-auto max-w-5xl px-6 pt-10 md:pt-16">
         {/* hero */}
         <div className="text-center mb-12 md:mb-16">
+          {/* Real, single H1 for SEO — visually replaced by the animated logo. */}
+          <h1 className="sr-only">
+            CodeRacer — corrida de digitação multiplayer para programadores. Digite código
+            mais rápido que seus amigos, sem cadastro.
+          </h1>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
+            aria-hidden="true"
           >
             <Logo size="xl" />
           </motion.div>
@@ -150,10 +156,12 @@ export function HomeView() {
           className="card p-6 md:p-8 neon-border max-w-2xl mx-auto"
         >
           <div className="mb-5">
-            <label className="label">player_name</label>
+            <label className="label" htmlFor="player_name">player_name</label>
             <input
+              id="player_name"
               className="input mt-1.5 text-base"
               placeholder="Ex.: caio_dev"
+              aria-label="Seu nick de jogador"
               maxLength={20}
               value={name}
               onChange={e => setName(e.target.value)}
@@ -175,6 +183,7 @@ export function HomeView() {
               <input
                 className="input uppercase tracking-[0.3em] text-center"
                 placeholder="CÓDIGO"
+                aria-label="Código de 6 letras da sala"
                 maxLength={6}
                 value={joinCode}
                 onChange={e =>
@@ -186,6 +195,7 @@ export function HomeView() {
                 onClick={handleJoin}
                 disabled={loading}
                 className="btn-secondary px-4"
+                aria-label="Entrar na sala com o código"
               >
                 <LogIn className="size-4" />
               </button>

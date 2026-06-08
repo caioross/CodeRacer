@@ -27,6 +27,7 @@ const config: Config = {
       },
       fontFamily: {
         mono: [
+          "var(--font-jetbrains)",
           "JetBrains Mono",
           "Fira Code",
           "ui-monospace",
@@ -35,7 +36,7 @@ const config: Config = {
           "Consolas",
           "monospace"
         ],
-        display: ["JetBrains Mono", "ui-monospace", "monospace"]
+        display: ["var(--font-jetbrains)", "JetBrains Mono", "ui-monospace", "monospace"]
       },
       boxShadow: {
         glow: "0 0 24px rgba(0, 255, 136, 0.25), 0 0 4px rgba(0, 255, 136, 0.4)",

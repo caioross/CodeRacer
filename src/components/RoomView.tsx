@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { LogIn, Users } from "lucide-react";
 import { Logo } from "./Logo";
 import { useToast } from "./ui/Toast";
 import { Lobby } from "./Lobby";
@@ -12,28 +14,61 @@ import { getSocket } from "@/lib/socket-client";
 import type { RoomState } from "@/lib/types";
 import { MatrixRain } from "./MatrixRain";
 
+type Phase = "connecting" | "need-name" | "ready";
+
 export function RoomView({ roomCode }: { roomCode: string }) {
   const router = useRouter();
   const toast = useToast();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [joining, setJoining] = useState(true);
+  const [phase, setPhase] = useState<Phase>("connecting");
 
-  // Connect + recover identity / join if needed
+  const mountedRef = useRef(true);
+
+  // Join the room with a given nick. Stable enough to call from the effect
+  // (via ref) and from the name gate.
+  const doJoin = useCallback(
+    (rawName: string) => {
+      const name = (rawName || "anon").slice(0, 20);
+      const socket = getSocket();
+      setPhase("connecting");
+      socket.emit("room:join", { name, code: roomCode }, (res: any) => {
+        if (!mountedRef.current) return;
+        if (!res?.ok) {
+          toast.push({ kind: "error", text: res?.error || "Sala indisponível" });
+          router.push("/");
+          return;
+        }
+        try {
+          localStorage.setItem("coderacer:name", name);
+          sessionStorage.setItem(
+            `coderacer:room:${roomCode}`,
+            JSON.stringify({ playerId: res.playerId, name })
+          );
+        } catch {}
+        setMeId(res.playerId);
+        setRoom(res.room);
+        setPhase("ready");
+      });
+    },
+    [roomCode, router, toast]
+  );
+
+  // Keep a ref to the latest doJoin so the connect effect runs only on roomCode.
+  const doJoinRef = useRef(doJoin);
+  doJoinRef.current = doJoin;
+
+  // Connect + recover identity / decide whether to auto-join or ask for a nick.
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
     const socket = getSocket();
 
-    const stored = sessionStorage.getItem(`coderacer:room:${roomCode}`);
-    const parsed = stored ? JSON.parse(stored) : null;
-
     const onState = (state: RoomState) => {
-      if (!mounted) return;
-      setRoom(state);
+      if (mountedRef.current) setRoom(state);
     };
     const onCountdown = (n: number) => {
-      if (!mounted) return;
+      if (!mountedRef.current) return;
       setCountdown(n);
       if (n < 0) setTimeout(() => setCountdown(null), 800);
     };
@@ -41,60 +76,26 @@ export function RoomView({ roomCode }: { roomCode: string }) {
     socket.on("room:state", onState);
     socket.on("race:countdown", onCountdown);
 
-    // Re-join logic: if we don't have a playerId yet, prompt for name and join.
-    if (parsed?.playerId) {
-      // Existing session — re-join with same name (server will assign new id, ok)
-      const name =
-        parsed?.name || localStorage.getItem("coderacer:name") || "anon";
-      socket.emit("room:join", { name, code: roomCode }, (res: any) => {
-        if (!mounted) return;
-        if (!res?.ok) {
-          toast.push({ kind: "error", text: res?.error || "Sala indisponível" });
-          router.push("/");
-          return;
-        }
-        setMeId(res.playerId);
-        sessionStorage.setItem(
-          `coderacer:room:${roomCode}`,
-          JSON.stringify({ playerId: res.playerId, name })
-        );
-        setRoom(res.room);
-        setJoining(false);
-      });
+    let knownName: string | null = null;
+    try {
+      const stored = sessionStorage.getItem(`coderacer:room:${roomCode}`);
+      const parsed = stored ? JSON.parse(stored) : null;
+      knownName = parsed?.name || localStorage.getItem("coderacer:name");
+    } catch {}
+
+    if (knownName) {
+      doJoinRef.current(knownName);
     } else {
-      // No session yet — ask for name in-line
-      const fallback =
-        localStorage.getItem("coderacer:name") ||
-        window.prompt("Seu nick para entrar na sala:") ||
-        "anon";
-      socket.emit(
-        "room:join",
-        { name: fallback.slice(0, 20), code: roomCode },
-        (res: any) => {
-          if (!mounted) return;
-          if (!res?.ok) {
-            toast.push({ kind: "error", text: res?.error || "Erro ao entrar" });
-            router.push("/");
-            return;
-          }
-          localStorage.setItem("coderacer:name", fallback);
-          sessionStorage.setItem(
-            `coderacer:room:${roomCode}`,
-            JSON.stringify({ playerId: res.playerId, name: fallback })
-          );
-          setMeId(res.playerId);
-          setRoom(res.room);
-          setJoining(false);
-        }
-      );
+      // No saved nick — show the styled gate instead of a native prompt().
+      setPhase("need-name");
     }
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       socket.off("room:state", onState);
       socket.off("race:countdown", onCountdown);
     };
-  }, [roomCode, router, toast]);
+  }, [roomCode]);
 
   const sendChat = useCallback((text: string) => {
     getSocket().emit("chat:send", { text });
@@ -132,7 +133,13 @@ export function RoomView({ roomCode }: { roomCode: string }) {
     });
   }, [toast]);
 
-  if (joining || !room || !meId) {
+  // 1) Ask for a nick with an in-theme screen (replaces window.prompt).
+  if (phase === "need-name") {
+    return <NameGate roomCode={roomCode} onJoin={doJoin} onCancel={() => router.push("/")} />;
+  }
+
+  // 2) Connecting / joining.
+  if (phase === "connecting" || !room || !meId) {
     return (
       <main className="min-h-screen grid place-items-center">
         <MatrixRain opacity={0.05} />
@@ -154,7 +161,7 @@ export function RoomView({ roomCode }: { roomCode: string }) {
 
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-4 md:px-6 py-3 border-b border-bg-line bg-bg/50 backdrop-blur">
-        <button onClick={() => router.push("/")} className="flex items-center gap-2">
+        <button onClick={() => router.push("/")} className="flex items-center gap-2" aria-label="Voltar para a home">
           <Logo size="sm" />
         </button>
         <RoomCodePill code={room.code} />
@@ -198,6 +205,74 @@ export function RoomView({ roomCode }: { roomCode: string }) {
           />
         )}
       </div>
+    </main>
+  );
+}
+
+function NameGate({
+  roomCode,
+  onJoin,
+  onCancel
+}: {
+  roomCode: string;
+  onJoin: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+
+  function submit() {
+    if (!name.trim()) return;
+    onJoin(name.trim());
+  }
+
+  return (
+    <main className="relative min-h-screen grid place-items-center px-4">
+      <MatrixRain opacity={0.06} />
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="card neon-border w-full max-w-md p-6 md:p-8 relative z-10"
+      >
+        <div className="flex justify-center mb-5">
+          <Logo size="md" />
+        </div>
+
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center gap-2 chip border-neon-green/40 text-neon-green mb-3">
+            <Users className="size-3" /> você foi convidado
+          </div>
+          <p className="text-text-muted text-sm">
+            entre na sala{" "}
+            <span className="text-neon-green font-bold tracking-[0.25em]">{roomCode}</span>{" "}
+            e mostre quem digita mais rápido.
+          </p>
+        </div>
+
+        <label className="label" htmlFor="nick">
+          escolha seu nick
+        </label>
+        <input
+          id="nick"
+          autoFocus
+          className="input mt-1.5 text-base"
+          placeholder="Ex.: caio_dev"
+          maxLength={20}
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()}
+        />
+
+        <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
+          <button onClick={submit} disabled={!name.trim()} className="btn-primary justify-center py-3">
+            <LogIn className="size-4" />
+            Entrar na corrida
+          </button>
+          <button onClick={onCancel} className="btn-ghost px-4">
+            voltar
+          </button>
+        </div>
+      </motion.div>
     </main>
   );
 }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable icon: full-bleed background with the mark inside the safe zone -->
+  <rect width="512" height="512" fill="#05060a"/>
+  <circle cx="256" cy="216" r="190" fill="#00ff88" opacity="0.12"/>
+  <text x="50%" y="52%" dominant-baseline="central" text-anchor="middle"
+    font-family="JetBrains Mono, ui-monospace, monospace" font-size="200" font-weight="800"
+    fill="#00ff88" style="filter: drop-shadow(0 0 24px #00ff88);">&gt;_</text>
+</svg>
