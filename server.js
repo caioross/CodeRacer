@@ -1,11 +1,16 @@
 // CodeRacer custom server: Next.js + Socket.io
-// All rooms live in memory. No database. Restart server = rooms gone.
+// Live rooms run in memory; FINISHED matches are persisted to Supabase
+// (best-effort) to power the global leaderboard. Restart = live rooms gone.
+
+// Load .env / .env.local into process.env BEFORE anything reads it.
+require("@next/env").loadEnvConfig(process.cwd());
 
 const { createServer } = require("http");
 const next = require("next");
 const { Server } = require("socket.io");
 const { customAlphabet } = require("nanoid");
 const { pickSnippet } = require("./src/lib/snippets-server.js");
+const { recordMatch } = require("./src/lib/supabase-server.js");
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
@@ -63,6 +68,16 @@ function broadcast(io, room) {
   io.to(room.code).emit("room:state", publicRoom(room));
 }
 
+// Mark a room as finished and persist it once (fire-and-forget).
+function markFinished(room) {
+  room.status = "finished";
+  room.finishedAt = Date.now();
+  if (!room.recorded) {
+    room.recorded = true;
+    recordMatch(room); // best-effort; never throws
+  }
+}
+
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => handle(req, res));
   const io = new Server(httpServer, {
@@ -89,7 +104,8 @@ app.prepare().then(() => {
         players: new Map(),
         chat: [],
         startedAt: null,
-        finishedAt: null
+        finishedAt: null,
+        recorded: false
       };
       const player = {
         id: playerId,
@@ -185,6 +201,7 @@ app.prepare().then(() => {
       currentRoom.status = "countdown";
       currentRoom.startedAt = null;
       currentRoom.finishedAt = null;
+      currentRoom.recorded = false;
       for (const p of currentRoom.players.values()) {
         p.progress = 0;
         p.wpm = 0;
@@ -240,8 +257,7 @@ app.prepare().then(() => {
       // Auto end when everyone finished
       const allDone = [...currentRoom.players.values()].every(p => p.finishedAt);
       if (allDone && currentRoom.status === "racing") {
-        currentRoom.status = "finished";
-        currentRoom.finishedAt = Date.now();
+        markFinished(currentRoom);
         broadcast(io, currentRoom);
       }
     });
@@ -259,8 +275,7 @@ app.prepare().then(() => {
       broadcast(io, currentRoom);
       const allDone = [...currentRoom.players.values()].every(p => p.finishedAt);
       if (allDone) {
-        currentRoom.status = "finished";
-        currentRoom.finishedAt = Date.now();
+        markFinished(currentRoom);
         broadcast(io, currentRoom);
       }
     });
@@ -305,10 +320,7 @@ app.prepare().then(() => {
       // if racing and everyone left has finished, end
       if (currentRoom.status === "racing") {
         const allDone = [...currentRoom.players.values()].every(p => p.finishedAt);
-        if (allDone) {
-          currentRoom.status = "finished";
-          currentRoom.finishedAt = Date.now();
-        }
+        if (allDone) markFinished(currentRoom);
       }
       broadcast(io, currentRoom);
     });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Plus, LogIn, Zap, Users, Trophy, Code2 } from "lucide-react";
 import { Logo } from "./Logo";
@@ -97,9 +98,17 @@ export function HomeView() {
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4">
         <Logo size="sm" />
-        <div className="flex items-center gap-2 text-xs font-mono text-text-muted">
-          <span className="size-1.5 rounded-full bg-neon-green shadow-glow animate-pulse" />
-          <span>online</span>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/leaderboard"
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
+          >
+            <Trophy className="size-3.5" /> ranking
+          </Link>
+          <div className="flex items-center gap-2 text-xs font-mono text-text-muted">
+            <span className="size-1.5 rounded-full bg-neon-green shadow-glow animate-pulse" />
+            <span>online</span>
+          </div>
         </div>
       </header>
 

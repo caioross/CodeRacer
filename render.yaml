@@ -1,0 +1,21 @@
+# Render Blueprint — one-click deploy of CodeRacer.
+# Docker gives us a persistent Node process, so Socket.io / WebSockets work.
+# After the first deploy, set the secret env vars in the Render dashboard.
+services:
+  - type: web
+    name: coderacer
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # Set to your real Render URL after the first deploy,
+      # e.g. https://coderacer.onrender.com
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
+      # Supabase (leaderboard / match history). Optional — the game still
+      # runs without them, just without persistence.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

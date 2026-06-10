@@ -37,7 +37,8 @@
 
 > **TL;DR** — Abra uma sala, mande o link pros amigos e dispute, em tempo real, quem digita o
 > snippet de código mais rápido (e com menos erro). **8 linguagens**, **WPM e precisão ao vivo**,
-> **pódio**, **chat** e um visual *dark hacker* com chuva de Matrix. Sem login, sem firula.
+> **pódio**, **chat**, **placar global** (Supabase) e um visual *dark hacker* com chuva de Matrix.
+> Sem login, sem firula.
 
 ### ⚡ O que é
 
@@ -46,8 +47,9 @@
 uma goroutine. Cada partida sorteia um snippet, dá o `3·2·1·GO!` e a pista enche de `🚀` correndo
 em tempo real conforme cada um digita.
 
-As **salas vivem em memória** — reiniciou o servidor, sumiram. É proposital pro MVP: zero banco de
-dados, zero cadastro, zero atrito. É só criar e jogar.
+As **salas ao vivo vivem em memória** (reiniciou, sumiram), mas cada **partida terminada é salva no
+Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais rápido em
+[`/leaderboard`](#-placar-global--supabase). Zero cadastro, zero atrito: é só criar e jogar.
 
 ### ✨ Recursos
 
@@ -57,6 +59,7 @@ dados, zero cadastro, zero atrito. É só criar e jogar.
 | 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — em **fácil / médio / difícil**. |
 | 📊 | **Métricas ao vivo** | **WPM**, **precisão**, **erros** e progresso por jogador, atualizados a cada tecla. |
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
+| 🌍 | **Placar global** | Toda partida terminada é salva no **Supabase** — ranking de recorde de WPM por jogador em `/leaderboard`. |
 | 💬 | **Chat na sala** | Provoque os amigos antes, durante e depois — com avisos do sistema (entrou, terminou, desistiu). |
 | 🌧️ | **Visual dark hacker** | Tema neon, *grid* de fundo e **MatrixRain** opcional. Respeita `prefers-reduced-motion`. |
 | 🚫 | **Anti-trapaça** | **Paste desabilitado** no input; backspace é permitido, mas só acerto *forward* conta. |
@@ -112,6 +115,30 @@ precisão = 1 − (erros / total de teclas) → em %
 - Backspace **não** conta como acerto (você pode corrigir, mas não ganha por isso).
 - A precisão penaliza cada tecla errada digitada, mesmo que você corrija depois.
 
+### 🏆 Placar global & Supabase
+<a name="-placar-global--supabase"></a>
+
+O CodeRacer **funciona 100% sem banco** — mas, se você configurar o **Supabase**, toda partida
+terminada é salva e vira um **ranking global** em `/leaderboard`.
+
+**1. Variáveis** (em `.env.local`):
+
+```bash
+SUPABASE_URL=https://SEU_PROJETO.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...        # server-only — NUNCA exponha no cliente
+DATABASE_URL=postgresql://postgres:SENHA@db.SEU_PROJETO.supabase.co:5432/postgres
+```
+
+**2. Crie as tabelas** (aplica os SQLs de `supabase/migrations/`):
+
+```bash
+pnpm db:migrate
+```
+
+Isso cria `matches`, `scores` e a view `leaderboard`, com **RLS**: leitura pública, escrita só pelo
+servidor (service role). O servidor grava a partida assim que ela termina, de forma *best-effort* —
+se o banco estiver fora, o jogo continua normal, só não registra o placar.
+
 ### 🏗️ Arquitetura
 
 Um **custom server Node** roda o Next.js e o Socket.io na **mesma porta** — simples de hospedar,
@@ -119,11 +146,15 @@ sem serviço separado de websocket.
 
 ```
 .
-├── server.js                     # custom server: Next + Socket.io, salas em memória
+├── server.js                     # custom server: Next + Socket.io; grava partidas no Supabase
+├── Dockerfile · render.yaml      # deploy (Node persistente + WebSockets)
+├── supabase/migrations/          # schema SQL: matches, scores, view leaderboard
+├── scripts/                      # pnpm db:migrate + utilitários de banco
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx            # metadata/SEO completo, next/font, JSON-LD, theme-color
 │   │   ├── page.tsx · globals.css
+│   │   ├── leaderboard/page.tsx  # ranking global (lê do Supabase)
 │   │   ├── room/[id]/page.tsx    # sala (noindex + título dinâmico)
 │   │   ├── opengraph-image.tsx   # card social 1200×630 gerado on-the-fly (edge)
 │   │   ├── twitter-image.tsx · apple-icon.tsx
@@ -137,6 +168,7 @@ sem serviço separado de websocket.
 │   │   └── ui/ (Modal · Toast)
 │   └── lib/
 │       ├── snippets-server.js    # snippets (CommonJS, consumido pelo server)
+│       ├── supabase-server.js    # escrita no banco (CJS); supabase.ts = leitura (placar)
 │       ├── languages.ts · types.ts · utils.ts · socket-client.ts · site.ts (config SEO)
 ```
 
@@ -203,17 +235,25 @@ O projeto vem com **SEO de produção** pronto:
 - ✅ **Fonte self-hosted** via `next/font` — sem request render-blocking, melhor *Core Web Vitals*.
 - ✅ Salas (`/room/*`) marcadas como **`noindex`** (conteúdo efêmero não polui o índice).
 
-> ⚠️ **Sobre o deploy:** o CodeRacer usa um **custom server + WebSockets**, então **não roda no
-> Vercel serverless**. Hospede num ambiente com **processo Node persistente**:
-> **Render**, **Railway**, **Fly.io** ou uma **VPS** (Docker/PM2). Lembre de setar
-> `NEXT_PUBLIC_SITE_URL` com seu domínio real.
+**Deploy (Render, grátis — tem `render.yaml` e `Dockerfile` prontos):**
+
+1. Suba o repo no GitHub. No [Render](https://render.com): **New → Blueprint** apontando pro repo
+   (ele lê o `render.yaml`).
+2. No painel, defina: `NEXT_PUBLIC_SITE_URL` (sua URL do Render), `SUPABASE_URL` e
+   `SUPABASE_SERVICE_ROLE_KEY`.
+3. Rode `pnpm db:migrate` uma vez (local, com `DATABASE_URL`) pra criar as tabelas.
+4. Deploy! Mande a URL pra galera e corram. 🏁
+
+> ⚠️ **Por que não Vercel?** O CodeRacer usa **custom server + WebSockets** (Socket.io), que **não
+> roda no Vercel serverless**. Use um host com **processo Node persistente** — **Render**,
+> **Railway**, **Fly.io** ou **VPS** (o `Dockerfile` serve pra todos).
 
 ### 🛠️ Stack
 
 - **Next.js 14** (App Router) + **TypeScript**
 - **Tailwind CSS** + **Framer Motion** (visual *dark hacker*)
 - **Socket.io** sobre um **custom server Node** (`server.js`) — mesma porta do Next
-- **Salas em memória** — zero banco de dados (proposital no MVP)
+- **Supabase (Postgres)** — persiste partidas terminadas p/ o placar; salas ao vivo em memória
 - Utilitários: `nanoid`, `clsx`, `tailwind-merge`, `lucide-react`
 
 ### 🗺️ Roadmap
@@ -255,8 +295,9 @@ Distribuído sob a licença **MIT**. Veja [`LICENSE`](./LICENSE).
 brown fox"*, you type real code — a `debounce`, an `LRU cache`, a goroutine. Each match draws a
 snippet, fires the `3·2·1·GO!`, and the track fills with `🚀` racing live as everyone types.
 
-**Rooms live in memory** — restart the server and they vanish. That's intentional for the MVP: no
-database, no signup, no friction. Just create and play.
+**Live rooms run in memory** (restart and they vanish), but every **finished match is saved to
+Supabase** to power a **global leaderboard** — see who's the fastest dev at `/leaderboard`. No
+signup, no friction: just create and play.
 
 ### ✨ Features
 
@@ -266,6 +307,7 @@ database, no signup, no friction. Just create and play.
 | 💻 | **8 languages** | JavaScript, TypeScript, Python, Java, C#, C++, Go and Rust — in **easy / medium / hard**. |
 | 📊 | **Live metrics** | **WPM**, **accuracy**, **errors** and per-player progress, updated on every keystroke. |
 | 🏆 | **Podium** | Gold/silver/bronze at the end + full standings with time. The leader restarts the match. |
+| 🌍 | **Global leaderboard** | Every finished match is saved to **Supabase** — a per-player best-WPM ranking at `/leaderboard`. |
 | 💬 | **In-room chat** | Trash-talk before, during and after — with system messages (joined, finished, gave up). |
 | 🌧️ | **Dark-hacker look** | Neon theme, background grid and optional **MatrixRain**. Honors `prefers-reduced-motion`. |
 | 🚫 | **Anti-cheat** | **Paste disabled** in the input; backspace allowed, but only *forward* hits count. |
@@ -352,16 +394,20 @@ The project ships with **production-grade SEO**: full Open Graph + Twitter metad
 `robots.txt`, a PWA `manifest`, and a self-hosted font via `next/font` for better Core Web Vitals.
 Ephemeral rooms are `noindex`.
 
-> ⚠️ **About deploying:** CodeRacer uses a **custom server + WebSockets**, so it **won't run on
-> Vercel serverless**. Host it where a **persistent Node process** lives: **Render**, **Railway**,
-> **Fly.io** or a **VPS** (Docker/PM2). Don't forget to set `NEXT_PUBLIC_SITE_URL` to your real
-> domain.
+**Deploy (Render, free — `render.yaml` and `Dockerfile` included):** push to GitHub → on Render,
+**New → Blueprint** pointing at the repo → set `NEXT_PUBLIC_SITE_URL`, `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` → run `pnpm db:migrate` once to create the tables → deploy and share
+the URL. 🏁
+
+> ⚠️ **Why not Vercel?** CodeRacer uses a **custom server + WebSockets** (Socket.io), which **won't
+> run on Vercel serverless**. Host it where a **persistent Node process** lives — **Render**,
+> **Railway**, **Fly.io** or a **VPS** (the `Dockerfile` works for all).
 
 ### 🛠️ Stack
 
 **Next.js 14** (App Router) + TypeScript · **Tailwind CSS** + Framer Motion · **Socket.io** on a
-**custom Node server** (`server.js`, same port as Next) · **in-memory rooms** (no DB). Helpers:
-`nanoid`, `clsx`, `tailwind-merge`, `lucide-react`.
+**custom Node server** (`server.js`, same port as Next) · **Supabase** (Postgres) persistence for the
+leaderboard, live rooms in memory. Helpers: `nanoid`, `clsx`, `tailwind-merge`, `lucide-react`.
 
 ### 🗺️ Roadmap
 

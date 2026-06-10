@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+.github
+.env*
+!.env.example
+docs
+scripts
+supabase
+.preview
+.claude
+*.log
+*.md
+.DS_Store
+Thumbs.db

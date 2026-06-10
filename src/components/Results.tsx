@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { RotateCcw, Trophy } from "lucide-react";
 import type { Player, RoomState } from "@/lib/types";
@@ -134,7 +135,7 @@ export function Results({
         </div>
 
         {/* actions */}
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex flex-col items-center gap-3">
           {isLeader ? (
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -150,6 +151,12 @@ export function Results({
               <span className="animate-pulse">// aguardando líder reiniciar...</span>
             </div>
           )}
+          <Link
+            href="/leaderboard"
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
+          >
+            <Trophy className="size-3.5" /> ver ranking global
+          </Link>
         </div>
       </div>
 
