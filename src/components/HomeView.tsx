@@ -10,8 +10,7 @@ import { MatrixRain } from "./MatrixRain";
 import { Modal } from "./ui/Modal";
 import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
-import { getSocket } from "@/lib/socket-client";
-import type { RoomState } from "@/lib/types";
+import { newPlayerId } from "@/lib/room";
 
 const PERSIST_NAME_KEY = "coderacer:name";
 
@@ -33,40 +32,47 @@ export function HomeView() {
     if (saved) setName(saved);
   }, []);
 
-  function persistAndGo(playerId: string, code: string, room: RoomState) {
+  function persistAndGo(playerId: string, code: string) {
+    const nm = name.trim() || "anon";
     try {
-      localStorage.setItem(PERSIST_NAME_KEY, name.trim() || "anon");
-      sessionStorage.setItem(
-        `coderacer:room:${code}`,
-        JSON.stringify({ playerId, name: name.trim() || "anon" })
-      );
+      localStorage.setItem(PERSIST_NAME_KEY, nm);
+      sessionStorage.setItem(`coderacer:room:${code}`, JSON.stringify({ playerId, name: nm }));
     } catch {}
     router.push(`/room/${code}`);
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     if (!name.trim()) {
       toast.push({ kind: "error", text: "Coloca um nome aí, fera" });
       return;
     }
     setLoading(true);
-    const socket = getSocket();
-    socket.emit(
-      "room:create",
-      { name: name.trim(), settings: { language, difficulty, maxPlayers } },
-      (res: any) => {
-        setLoading(false);
-        if (!res?.ok) {
-          toast.push({ kind: "error", text: res?.error || "Erro ao criar sala" });
-          return;
-        }
-        setCreateOpen(false);
-        persistAndGo(res.playerId, res.code, res.room);
+    const playerId = newPlayerId();
+    try {
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          settings: { language, difficulty, maxPlayers },
+          playerId
+        })
+      });
+      const json = await res.json().catch(() => ({}));
+      setLoading(false);
+      if (!json?.ok) {
+        toast.push({ kind: "error", text: json?.error || "Erro ao criar sala" });
+        return;
       }
-    );
+      setCreateOpen(false);
+      persistAndGo(playerId, json.code);
+    } catch {
+      setLoading(false);
+      toast.push({ kind: "error", text: "Sem conexão com o servidor" });
+    }
   }
 
-  function handleJoin() {
+  async function handleJoin() {
     if (!name.trim()) {
       toast.push({ kind: "error", text: "Coloca um nome aí, fera" });
       return;
@@ -76,19 +82,24 @@ export function HomeView() {
       return;
     }
     setLoading(true);
-    const socket = getSocket();
-    socket.emit(
-      "room:join",
-      { name: name.trim(), code: joinCode.trim().toUpperCase() },
-      (res: any) => {
-        setLoading(false);
-        if (!res?.ok) {
-          toast.push({ kind: "error", text: res?.error || "Erro ao entrar" });
-          return;
-        }
-        persistAndGo(res.playerId, res.code, res.room);
+    const code = joinCode.trim().toUpperCase();
+    try {
+      const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setLoading(false);
+      if (!json?.ok) {
+        toast.push({ kind: "error", text: json?.error || "Sala não encontrada" });
+        return;
       }
-    );
+      if (json.room?.status === "racing") {
+        toast.push({ kind: "error", text: "Partida em andamento, aguarda terminar" });
+        return;
+      }
+      persistAndGo(newPlayerId(), code);
+    } catch {
+      setLoading(false);
+      toast.push({ kind: "error", text: "Sem conexão com o servidor" });
+    }
   }
 
   return (

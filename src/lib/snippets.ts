@@ -1,7 +1,15 @@
-// CommonJS module consumed by the custom server.
-// Snippets are short, real-world looking code fragments per language/difficulty.
+// Snippet pool, consumed server-side by the API routes (room start).
+// Short, real-world-looking code fragments per language / difficulty.
+import type { Difficulty, LangId } from "./languages";
 
-const SNIPPETS = {
+export interface SnippetSeed {
+  title: string;
+  code: string;
+}
+
+type Pool = Record<string, Partial<Record<Difficulty, SnippetSeed[]>>>;
+
+const SNIPPETS: Pool = {
   javascript: {
     easy: [
       {
@@ -383,7 +391,7 @@ import (
 func worker(id int, jobs <-chan int, wg *sync.WaitGroup) {
     defer wg.Done()
     for j := range jobs {
-        fmt.Printf("worker %d got %d\n", id, j)
+        fmt.Printf("worker %d got %d\\n", id, j)
     }
 }
 
@@ -479,7 +487,7 @@ fn main() {
   }
 };
 
-function normalizeLang(l) {
+function normalizeLang(l: string): string {
   const m = String(l || "").toLowerCase();
   if (m === "ts") return "typescript";
   if (m === "js") return "javascript";
@@ -489,18 +497,23 @@ function normalizeLang(l) {
   return m;
 }
 
-function pickSnippet(language, difficulty) {
+export interface PickedSnippet {
+  title: string;
+  code: string;
+  language: LangId;
+  difficulty: Difficulty;
+}
+
+export function pickSnippet(language: string, difficulty: string): PickedSnippet {
   const lang = normalizeLang(language) || "javascript";
-  const diff = ["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium";
+  const diff = (["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium") as Difficulty;
   const langBucket = SNIPPETS[lang] || SNIPPETS.javascript;
-  const pool = langBucket[diff] || langBucket.medium || langBucket.easy;
+  const pool = langBucket[diff] || langBucket.medium || langBucket.easy || [];
   const choice = pool[Math.floor(Math.random() * pool.length)];
   return {
     title: choice.title,
     code: choice.code,
-    language: lang,
+    language: lang as LangId,
     difficulty: diff
   };
 }
-
-module.exports = { pickSnippet, SNIPPETS };

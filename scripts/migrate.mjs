@@ -1,12 +1,12 @@
 // Apply every .sql file in supabase/migrations (sorted) to DATABASE_URL.
 // Migrations are written idempotently (IF NOT EXISTS / OR REPLACE).
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import pg from "pg";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-loadEnvConfig(process.cwd()); // load .env.local → process.env
+nextEnv.loadEnvConfig(process.cwd()); // load .env.local → process.env
 
 const url = process.env.DATABASE_URL;
 if (!url) {

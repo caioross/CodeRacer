@@ -11,13 +11,13 @@
 
 [![Next.js](https://img.shields.io/badge/Next.js-14.2-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Socket.io](https://img.shields.io/badge/Socket.io-4.8-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://socket.io/)
+[![Supabase Realtime](https://img.shields.io/badge/Supabase-Realtime-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Framer Motion](https://img.shields.io/badge/Framer_Motion-11-0055FF?style=for-the-badge&logo=framer&logoColor=white)](https://www.framer.com/motion/)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00ff88?style=flat-square)](#-licença--license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-00e5ff?style=flat-square)](#-contribuindo--contributing)
-[![No database](https://img.shields.io/badge/database-none_(in--memory)-a855f7?style=flat-square)](#-arquitetura)
+[![Deploy on Vercel](https://img.shields.io/badge/deploy-Vercel-000?style=flat-square&logo=vercel&logoColor=white)](#-seo--deploy)
 [![CI](https://img.shields.io/badge/CI-build-green?style=flat-square&logo=githubactions&logoColor=white)](./.github/workflows/ci.yml)
 
 <br/>
@@ -25,7 +25,7 @@
 **🇧🇷 [Português](#-português) · 🇺🇸 [English](#-english)**
 
 ```
-> _ CodeRacer · sem cadastro · sem banco · só você, seu teclado e a glória
+> _ CodeRacer · sem cadastro · tempo real · só você, seu teclado e a glória
 ```
 
 </div>
@@ -85,22 +85,29 @@ Pré-requisitos: **Node 18+** e **pnpm** (ou npm).
 # 1. instale as dependências
 pnpm install          # ou: npm install
 
-# 2. modo desenvolvimento (Next + Socket.io na MESMA porta, via server.js)
+# 2. configure o Supabase (copie .env.example → .env.local e preencha)
+#    e crie as tabelas:
+pnpm db:migrate
+
+# 3. modo desenvolvimento
 pnpm dev              # → http://localhost:3000
 
-# 3. produção
-pnpm build
-pnpm start            # NODE_ENV=production node server.js
+# 4. produção
+pnpm build && pnpm start
 ```
 
-Variáveis de ambiente (copie `.env.example` → `.env.local`):
+Variáveis de ambiente (copie `.env.example` → `.env.local` — e replique na Vercel):
 
-| Variável | Para quê | Padrão |
-|:--|:--|:--|
-| `NEXT_PUBLIC_SITE_URL` | URL pública usada no SEO (canonical, Open Graph, sitemap, JSON-LD). Sem barra no final. | `https://coderacer.app` |
-| `PORT` | Porta do servidor (Next + Socket.io juntos). | `3000` |
+| Variável | Para quê |
+|:--|:--|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase (cliente — usada pelo Realtime). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave **anon** do Supabase (cliente — Realtime). |
+| `SUPABASE_URL` | URL do Supabase (servidor — API routes). |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Service role** (servidor — escreve salas/placar). **Nunca exponha no cliente.** |
+| `DATABASE_URL` | Connection string do Postgres (usada por `pnpm db:migrate`). |
+| `NEXT_PUBLIC_SITE_URL` | URL pública p/ SEO (canonical, Open Graph, sitemap). Sem barra no final. |
 
-Scripts úteis: `pnpm typecheck` · `pnpm lint`.
+Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm db:migrate`.
 
 ### 🧠 Como o WPM é calculado
 
@@ -118,14 +125,17 @@ precisão = 1 − (erros / total de teclas) → em %
 ### 🏆 Placar global & Supabase
 <a name="-placar-global--supabase"></a>
 
-O CodeRacer **funciona 100% sem banco** — mas, se você configurar o **Supabase**, toda partida
-terminada é salva e vira um **ranking global** em `/leaderboard`.
+O **Supabase faz dois trabalhos** no CodeRacer: o **tempo real** (presence p/ o roster + broadcast
+p/ progresso e chat) e a **persistência** (estado durável da sala + placar global). É ele que faz o
+multiplayer rodar 100% na **Vercel**, sem servidor próprio.
 
 **1. Variáveis** (em `.env.local`):
 
 ```bash
+NEXT_PUBLIC_SUPABASE_URL=https://SEU_PROJETO.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...     # cliente (Realtime)
 SUPABASE_URL=https://SEU_PROJETO.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=...        # server-only — NUNCA exponha no cliente
+SUPABASE_SERVICE_ROLE_KEY=...         # servidor — NUNCA exponha no cliente
 DATABASE_URL=postgresql://postgres:SENHA@db.SEU_PROJETO.supabase.co:5432/postgres
 ```
 
@@ -135,24 +145,30 @@ DATABASE_URL=postgresql://postgres:SENHA@db.SEU_PROJETO.supabase.co:5432/postgre
 pnpm db:migrate
 ```
 
-Isso cria `matches`, `scores` e a view `leaderboard`, com **RLS**: leitura pública, escrita só pelo
-servidor (service role). O servidor grava a partida assim que ela termina, de forma *best-effort* —
-se o banco estiver fora, o jogo continua normal, só não registra o placar.
+Cria `rooms` (estado durável + Realtime habilitado), `matches`, `scores` e a view `leaderboard`,
+com **RLS**: leitura pública, escrita só pelas **API routes** (service role). O progresso a cada
+tecla viaja por **broadcast** (efêmero, não toca o banco) — só o resultado final é gravado.
 
 ### 🏗️ Arquitetura
 
-Um **custom server Node** roda o Next.js e o Socket.io na **mesma porta** — simples de hospedar,
-sem serviço separado de websocket.
+**Sem servidor próprio.** O multiplayer roda em **Supabase Realtime** + **API routes serverless** —
+por isso publica direto na **Vercel**:
+
+- **Estado durável** (config/status/snippet/resultado) → tabela `rooms` + `postgres_changes`.
+- **Roster** → **Presence** (entra/sai automático).
+- **Progresso por tecla + chat** → **Broadcast** (efêmero, não toca o banco).
+- **Mutações** (criar/iniciar/terminar/reset/settings) → **API routes** com service role. A contagem
+  regressiva é derivada de `start_at` — sem timer no servidor.
 
 ```
 .
-├── server.js                     # custom server: Next + Socket.io; grava partidas no Supabase
-├── Dockerfile · render.yaml      # deploy (Node persistente + WebSockets)
-├── supabase/migrations/          # schema SQL: matches, scores, view leaderboard
-├── scripts/                      # pnpm db:migrate + utilitários de banco
+├── supabase/migrations/          # schema SQL: rooms, matches, scores, view leaderboard
+├── scripts/                      # pnpm db:migrate + realtime-test (teste e2e do multiplayer)
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx            # metadata/SEO completo, next/font, JSON-LD, theme-color
+│   │   ├── api/rooms/route.ts          # POST criar sala
+│   │   ├── api/rooms/[code]/route.ts   # GET sala · POST ações (settings/start/finish/reset)
+│   │   ├── layout.tsx            # metadata/SEO, next/font, JSON-LD, theme-color
 │   │   ├── page.tsx · globals.css
 │   │   ├── leaderboard/page.tsx  # ranking global (lê do Supabase)
 │   │   ├── room/[id]/page.tsx    # sala (noindex + título dinâmico)
@@ -167,9 +183,10 @@ sem serviço separado de websocket.
 │   │   ├── Chat · PlayerList · Logo · MatrixRain
 │   │   └── ui/ (Modal · Toast)
 │   └── lib/
-│       ├── snippets-server.js    # snippets (CommonJS, consumido pelo server)
-│       ├── supabase-server.js    # escrita no banco (CJS); supabase.ts = leitura (placar)
-│       ├── languages.ts · types.ts · utils.ts · socket-client.ts · site.ts (config SEO)
+│       ├── useRoom.ts            # hook do tempo real (presence + broadcast + postgres_changes)
+│       ├── supabase-browser.ts   # client anon (Realtime) · supabase.ts = leitura server-side
+│       ├── room.ts · snippets.ts # tipos/constantes da sala · pool de snippets
+│       ├── languages.ts · types.ts · utils.ts · site.ts (config SEO)
 ```
 
 #### Fluxo de uma partida
@@ -177,52 +194,41 @@ sem serviço separado de websocket.
 ```mermaid
 sequenceDiagram
     participant L as Líder
-    participant S as Server (Socket.io)
+    participant API as API routes (Vercel)
+    participant DB as Supabase (rooms + Realtime)
     participant P as Jogadores
-    L->>S: room:create {name, settings}
-    S-->>L: {code, room}
-    P->>S: room:join {name, code}
-    S-->>P: room:state
-    L->>S: race:start
-    S-->>P: race:countdown 3·2·1·0
+    L->>API: POST /api/rooms (criar)
+    API->>DB: insert room
+    P->>DB: subscribe canal (presence · broadcast · changes)
+    L->>API: POST start
+    API->>DB: status=racing, snippet, start_at
+    DB-->>P: postgres_changes (racing)
+    Note over P: countdown derivado de start_at
     loop a cada tecla
-        P->>S: race:progress {progress, wpm, accuracy, errors}
-        S-->>P: room:state (posições ao vivo)
+        P-->>P: broadcast progress (efêmero)
     end
-    Note over S,P: 1º a terminar lidera o pódio 🥇
+    L->>API: POST finish {standings}
+    API->>DB: status=finished + grava matches/scores
+    DB-->>P: postgres_changes (finished) → pódio 🥇
 ```
 
-#### Eventos Socket.io
+#### Tempo real & API
 
-<table>
-<tr><th align="left">client → server</th><th align="left">server → client</th></tr>
-<tr><td valign="top">
+**Canal `coderacer:room:{code}`** (Supabase Realtime):
+- **Presence** — roster ao vivo (quem está na sala).
+- **Broadcast `progress`** — `{ id, progress, wpm, accuracy, errors, finishedAt }` por jogador.
+- **Broadcast `chat`** — mensagens da sala.
+- **postgres_changes** em `rooms` — status, snippet, `start_at`, líder e resultados.
 
-| Evento | Payload |
+**API routes** (`/api/rooms`, com service role):
+
+| Rota | O que faz |
 |:--|:--|
-| `room:create` | `{ name, settings }` |
-| `room:join` | `{ code, name }` |
-| `room:updateSettings` | `{ settings }` |
-| `chat:send` | `{ text }` |
-| `race:start` | — |
-| `race:progress` | `{ progress, wpm, accuracy, errors }` |
-| `race:abandon` | — |
-| `race:reset` | — |
+| `POST /api/rooms` | cria a sala (gera o código de 6 letras) |
+| `GET /api/rooms/[code]` | estado atual da sala |
+| `POST /api/rooms/[code]` `{action}` | `settings` · `start` (sorteia snippet) · `finish` (grava placar) · `reset` · `claim-leader` |
 
-</td><td valign="top">
-
-| Evento | Payload |
-|:--|:--|
-| `room:state` | `RoomState` completo |
-| `race:countdown` | `n` = 3, 2, 1, 0 |
-
-**Regras do servidor**
-- Sala vazia se autodestrói.
-- Líder saiu? O próximo jogador assume.
-- Tudo validado/limitado no servidor (nome, max players 2–12, etc.).
-
-</td></tr>
-</table>
+> Salas vazias somem por inatividade; se o líder sai, o próximo jogador assume (eleição via presence).
 
 ### 🌐 SEO & Deploy
 
@@ -235,25 +241,24 @@ O projeto vem com **SEO de produção** pronto:
 - ✅ **Fonte self-hosted** via `next/font` — sem request render-blocking, melhor *Core Web Vitals*.
 - ✅ Salas (`/room/*`) marcadas como **`noindex`** (conteúdo efêmero não polui o índice).
 
-**Deploy (Render, grátis — tem `render.yaml` e `Dockerfile` prontos):**
+**Deploy na Vercel** (roda nativo — o tempo real é todo Supabase, sem servidor próprio):
 
-1. Suba o repo no GitHub. No [Render](https://render.com): **New → Blueprint** apontando pro repo
-   (ele lê o `render.yaml`).
-2. No painel, defina: `NEXT_PUBLIC_SITE_URL` (sua URL do Render), `SUPABASE_URL` e
-   `SUPABASE_SERVICE_ROLE_KEY`.
-3. Rode `pnpm db:migrate` uma vez (local, com `DATABASE_URL`) pra criar as tabelas.
-4. Deploy! Mande a URL pra galera e corram. 🏁
+1. Importe o repo na [Vercel](https://vercel.com/new) — ela detecta o Next.js sozinha.
+2. Em **Settings → Environment Variables**, defina: `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e
+   `NEXT_PUBLIC_SITE_URL` (sua URL da Vercel).
+3. Rode `pnpm db:migrate` uma vez (local, com o `DATABASE_URL`) pra criar as tabelas.
+4. **Deploy!** Mande a URL pra galera e corram. 🏁
 
-> ⚠️ **Por que não Vercel?** O CodeRacer usa **custom server + WebSockets** (Socket.io), que **não
-> roda no Vercel serverless**. Use um host com **processo Node persistente** — **Render**,
-> **Railway**, **Fly.io** ou **VPS** (o `Dockerfile` serve pra todos).
+> 💡 Como o multiplayer usa **Supabase Realtime** (e não um WebSocket próprio), funciona no
+> serverless da Vercel sem gambiarra nenhuma.
 
 ### 🛠️ Stack
 
-- **Next.js 14** (App Router) + **TypeScript**
+- **Next.js 14** (App Router) + **TypeScript** — UI **e** API routes serverless
 - **Tailwind CSS** + **Framer Motion** (visual *dark hacker*)
-- **Socket.io** sobre um **custom server Node** (`server.js`) — mesma porta do Next
-- **Supabase (Postgres)** — persiste partidas terminadas p/ o placar; salas ao vivo em memória
+- **Supabase Realtime** — multiplayer (presence + broadcast); **Postgres** p/ salas e placar
+- **Vercel** — deploy serverless nativo (sem servidor próprio)
 - Utilitários: `nanoid`, `clsx`, `tailwind-merge`, `lucide-react`
 
 ### 🗺️ Roadmap
@@ -273,7 +278,7 @@ Contribuições são muito bem-vindas! 🎉
 3. Abra um **Pull Request** descrevendo a mudança
 
 **Quer só adicionar snippets?** É o jeito mais fácil de ajudar: edite
-[`src/lib/snippets-server.js`](src/lib/snippets-server.js), adicione seu trecho na linguagem e
+[`src/lib/snippets.ts`](src/lib/snippets.ts), adicione seu trecho na linguagem e
 dificuldade certas e mande o PR. 🙌
 
 ### 📄 Licença / License
@@ -333,22 +338,28 @@ Requirements: **Node 18+** and **pnpm** (or npm).
 # 1. install dependencies
 pnpm install          # or: npm install
 
-# 2. dev mode (Next + Socket.io on the SAME port, via server.js)
+# 2. configure Supabase (.env.example → .env.local) and create the tables
+pnpm db:migrate
+
+# 3. dev mode
 pnpm dev              # → http://localhost:3000
 
-# 3. production
-pnpm build
-pnpm start            # NODE_ENV=production node server.js
+# 4. production
+pnpm build && pnpm start
 ```
 
-Environment variables (copy `.env.example` → `.env.local`):
+Environment variables (copy `.env.example` → `.env.local` — and mirror them on Vercel):
 
-| Variable | Purpose | Default |
-|:--|:--|:--|
-| `NEXT_PUBLIC_SITE_URL` | Public URL used for SEO (canonical, Open Graph, sitemap, JSON-LD). No trailing slash. | `https://coderacer.app` |
-| `PORT` | Server port (Next + Socket.io together). | `3000` |
+| Variable | Purpose |
+|:--|:--|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (client — used by Realtime). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase **anon** key (client — Realtime). |
+| `SUPABASE_URL` | Supabase URL (server — API routes). |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Service role** (server — writes rooms/leaderboard). **Never expose it.** |
+| `DATABASE_URL` | Postgres connection string (used by `pnpm db:migrate`). |
+| `NEXT_PUBLIC_SITE_URL` | Public URL for SEO (canonical, OG, sitemap). No trailing slash. |
 
-Handy scripts: `pnpm typecheck` · `pnpm lint`.
+Handy scripts: `pnpm typecheck` · `pnpm lint` · `pnpm db:migrate`.
 
 ### 🧠 How WPM is calculated
 
@@ -365,26 +376,29 @@ accuracy = 1 − (errors / total keystrokes) → as %
 
 ### 🏗️ Architecture
 
-A **custom Node server** runs Next.js and Socket.io on the **same port** — simple to host, no
-separate websocket service. See the Portuguese section above for the full file tree, the message
-sequence diagram and the Socket.io event tables.
+**No standalone server** — the multiplayer runs on **Supabase Realtime** (presence + broadcast) plus
+**serverless API routes**, so it deploys straight to **Vercel**. See the Portuguese section above for
+the full file tree, the room channel and the API route tables.
 
 ```mermaid
 sequenceDiagram
     participant L as Leader
-    participant S as Server (Socket.io)
+    participant API as API routes (Vercel)
+    participant DB as Supabase (rooms + Realtime)
     participant P as Players
-    L->>S: room:create {name, settings}
-    S-->>L: {code, room}
-    P->>S: room:join {name, code}
-    S-->>P: room:state
-    L->>S: race:start
-    S-->>P: race:countdown 3·2·1·0
+    L->>API: POST /api/rooms (create)
+    API->>DB: insert room
+    P->>DB: subscribe channel (presence · broadcast · changes)
+    L->>API: POST start
+    API->>DB: status=racing, snippet, start_at
+    DB-->>P: postgres_changes (racing)
+    Note over P: countdown derived from start_at
     loop every keystroke
-        P->>S: race:progress {progress, wpm, accuracy, errors}
-        S-->>P: room:state (live standings)
+        P-->>P: broadcast progress (ephemeral)
     end
-    Note over S,P: first to finish tops the podium 🥇
+    L->>API: POST finish {standings}
+    API->>DB: status=finished + save matches/scores
+    DB-->>P: postgres_changes (finished) → podium 🥇
 ```
 
 ### 🌐 SEO & Deploy
@@ -394,20 +408,20 @@ The project ships with **production-grade SEO**: full Open Graph + Twitter metad
 `robots.txt`, a PWA `manifest`, and a self-hosted font via `next/font` for better Core Web Vitals.
 Ephemeral rooms are `noindex`.
 
-**Deploy (Render, free — `render.yaml` and `Dockerfile` included):** push to GitHub → on Render,
-**New → Blueprint** pointing at the repo → set `NEXT_PUBLIC_SITE_URL`, `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` → run `pnpm db:migrate` once to create the tables → deploy and share
-the URL. 🏁
+**Deploy on Vercel** (native — the realtime layer is all Supabase, no standalone server): import the
+repo at [vercel.com/new](https://vercel.com/new) → set `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL`
+→ run `pnpm db:migrate` once to create the tables → deploy and share the URL. 🏁
 
-> ⚠️ **Why not Vercel?** CodeRacer uses a **custom server + WebSockets** (Socket.io), which **won't
-> run on Vercel serverless**. Host it where a **persistent Node process** lives — **Render**,
-> **Railway**, **Fly.io** or a **VPS** (the `Dockerfile` works for all).
+> 💡 Because multiplayer uses **Supabase Realtime** (not a custom WebSocket), it runs on Vercel's
+> serverless with zero workarounds.
 
 ### 🛠️ Stack
 
-**Next.js 14** (App Router) + TypeScript · **Tailwind CSS** + Framer Motion · **Socket.io** on a
-**custom Node server** (`server.js`, same port as Next) · **Supabase** (Postgres) persistence for the
-leaderboard, live rooms in memory. Helpers: `nanoid`, `clsx`, `tailwind-merge`, `lucide-react`.
+**Next.js 14** (App Router) + TypeScript (UI **and** serverless API routes) · **Tailwind CSS** +
+Framer Motion · **Supabase Realtime** for multiplayer (presence + broadcast) and **Postgres** for
+rooms + leaderboard · deployed on **Vercel**. Helpers: `nanoid`, `clsx`, `tailwind-merge`,
+`lucide-react`.
 
 ### 🗺️ Roadmap
 
@@ -421,7 +435,7 @@ leaderboard, live rooms in memory. Helpers: `nanoid`, `clsx`, `tailwind-merge`, 
 
 Contributions are very welcome! 🎉 Fork, create a branch, run `pnpm typecheck` and `pnpm lint`,
 then open a PR. **The easiest way to help is adding snippets** — edit
-[`src/lib/snippets-server.js`](src/lib/snippets-server.js) and send a PR. 🙌
+[`src/lib/snippets.ts`](src/lib/snippets.ts) and send a PR. 🙌
 
 ### 📄 License
 
