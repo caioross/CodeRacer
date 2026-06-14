@@ -24,13 +24,23 @@ export function PlayerList({
             key={p.id}
             className="flex items-center gap-2 px-3 py-2 text-sm"
           >
-            <span
-              className="size-2 rounded-full"
-              style={{
-                background: p.color,
-                boxShadow: `0 0 8px ${p.color}`
-              }}
-            />
+            {p.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={p.avatar}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="size-4 rounded-full shrink-0"
+              />
+            ) : (
+              <span
+                className="size-2 rounded-full"
+                style={{
+                  background: p.color,
+                  boxShadow: `0 0 8px ${p.color}`
+                }}
+              />
+            )}
             <span className="flex-1 truncate" style={{ color: p.color }}>
               {p.name}
               {p.id === meId && (

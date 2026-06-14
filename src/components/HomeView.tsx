@@ -11,12 +11,14 @@ import { Modal } from "./ui/Modal";
 import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
 import { newPlayerId } from "@/lib/room";
+import { useAuth } from "@/lib/useAuth";
 
 const PERSIST_NAME_KEY = "coderacer:name";
 
 export function HomeView() {
   const router = useRouter();
   const toast = useToast();
+  const auth = useAuth();
 
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -31,6 +33,11 @@ export function HomeView() {
     const saved = typeof window !== "undefined" ? localStorage.getItem(PERSIST_NAME_KEY) : null;
     if (saved) setName(saved);
   }, []);
+
+  // When signed in with Google, default the nick to that name.
+  useEffect(() => {
+    if (auth.user?.name) setName(auth.user.name);
+  }, [auth.user]);
 
   function persistAndGo(playerId: string, code: string) {
     const nm = name.trim() || "anon";
@@ -109,14 +116,50 @@ export function HomeView() {
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4">
         <Logo size="sm" />
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 md:gap-4">
           <Link
             href="/leaderboard"
             className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
           >
             <Trophy className="size-3.5" /> ranking
           </Link>
-          <div className="flex items-center gap-2 text-xs font-mono text-text-muted">
+
+          {auth.available &&
+            (auth.user ? (
+              <div className="flex items-center gap-2">
+                {auth.user.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={auth.user.avatar}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="size-6 rounded-full border border-bg-line"
+                  />
+                ) : (
+                  <span className="size-6 rounded-full bg-neon-green/20 text-neon-green grid place-items-center text-[10px] font-bold">
+                    {auth.user.name.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+                <span className="hidden sm:inline text-xs font-mono text-text-muted max-w-[110px] truncate">
+                  {auth.user.name}
+                </span>
+                <button
+                  onClick={auth.signOut}
+                  className="text-[10px] font-mono text-text-dim hover:text-neon-red transition-colors"
+                >
+                  sair
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={auth.signInWithGoogle}
+                className="btn-secondary text-xs px-3 py-1.5"
+              >
+                <GoogleIcon /> entrar com Google
+              </button>
+            ))}
+
+          <div className="hidden md:flex items-center gap-2 text-xs font-mono text-text-muted">
             <span className="size-1.5 rounded-full bg-neon-green shadow-glow animate-pulse" />
             <span>online</span>
           </div>
@@ -330,6 +373,17 @@ export function HomeView() {
         </div>
       </Modal>
     </main>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3.5" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+    </svg>
   );
 }
 

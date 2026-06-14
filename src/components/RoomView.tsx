@@ -136,6 +136,7 @@ function liveToPlayer(p: LivePlayer): Player {
     id: p.id,
     name: p.name,
     color: p.color,
+    avatar: p.avatar ?? null,
     progress: p.progress,
     wpm: p.wpm,
     accuracy: p.accuracy,

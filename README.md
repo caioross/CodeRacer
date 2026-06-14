@@ -61,6 +61,7 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
 | 🌍 | **Placar global** | Toda partida terminada é salva no **Supabase** — ranking de recorde de WPM por jogador em `/leaderboard`. |
 | 💬 | **Chat na sala** | Provoque os amigos antes, durante e depois — com avisos do sistema (entrou, terminou, desistiu). |
+| 🔑 | **Login com Google** *(opcional)* | Entre com o Google p/ usar seu **nome e avatar** — ou jogue como convidado, do mesmo jeito. |
 | 🌧️ | **Visual dark hacker** | Tema neon, *grid* de fundo e **MatrixRain** opcional. Respeita `prefers-reduced-motion`. |
 | 🚫 | **Anti-trapaça** | **Paste desabilitado** no input; backspace é permitido, mas só acerto *forward* conta. |
 | 📱 | **PWA-ready** | Manifest, ícones e *theme-color* — dá pra "instalar" no celular. |
@@ -148,6 +149,19 @@ pnpm db:migrate
 Cria `rooms` (estado durável + Realtime habilitado), `matches`, `scores` e a view `leaderboard`,
 com **RLS**: leitura pública, escrita só pelas **API routes** (service role). O progresso a cada
 tecla viaja por **broadcast** (efêmero, não toca o banco) — só o resultado final é gravado.
+
+**3. Login com Google** *(opcional)* — usa o **Supabase Auth** (a secret fica só no Supabase, nunca
+no código):
+
+- **Supabase → Authentication → Providers → Google:** ative e cole o **Client ID** e o
+  **Client Secret** (do Google Cloud).
+- **Supabase → Authentication → URL Configuration:** em *Redirect URLs*, adicione sua URL de
+  produção (ex.: `https://code-racer-three.vercel.app/**`) e `http://localhost:3000/**`.
+- **Google Cloud Console → Credentials → seu OAuth client:** em *Authorized redirect URIs*, adicione
+  `https://SEU_PROJETO.supabase.co/auth/v1/callback`.
+
+O app chama `signInWithOAuth({ provider: "google" })` (PKCE, client-side) — sem precisar de
+nada além do **anon key**. Login é opcional: dá pra jogar como convidado.
 
 ### 🏗️ Arquitetura
 
@@ -314,6 +328,7 @@ signup, no friction: just create and play.
 | 🏆 | **Podium** | Gold/silver/bronze at the end + full standings with time. The leader restarts the match. |
 | 🌍 | **Global leaderboard** | Every finished match is saved to **Supabase** — a per-player best-WPM ranking at `/leaderboard`. |
 | 💬 | **In-room chat** | Trash-talk before, during and after — with system messages (joined, finished, gave up). |
+| 🔑 | **Google login** *(optional)* | Sign in with Google to use your **name and avatar** — or just play as a guest. |
 | 🌧️ | **Dark-hacker look** | Neon theme, background grid and optional **MatrixRain**. Honors `prefers-reduced-motion`. |
 | 🚫 | **Anti-cheat** | **Paste disabled** in the input; backspace allowed, but only *forward* hits count. |
 | 📱 | **PWA-ready** | Manifest, icons and theme-color — installable on mobile. |

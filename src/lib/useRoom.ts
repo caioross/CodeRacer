@@ -16,6 +16,7 @@ import {
 
 const SESSION_KEY = (code: string) => `coderacer:room:${code}`;
 const NAME_KEY = "coderacer:name";
+const AVATAR_KEY = "coderacer:avatar";
 const PROGRESS_THROTTLE_MS = 120;
 
 export type Phase = "need-name" | "connecting" | "ready" | "error";
@@ -105,7 +106,9 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     setMeId(id);
     const name = joinName.slice(0, 20) || "anon";
     const color = colorForId(id);
+    let avatar: string | null = null;
     try {
+      avatar = localStorage.getItem(AVATAR_KEY);
       localStorage.setItem(NAME_KEY, name);
       sessionStorage.setItem(SESSION_KEY(code), JSON.stringify({ playerId: id, name }));
     } catch {}
@@ -181,7 +184,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       channel.subscribe(status => {
         if (cancelled) return;
         if (status === "SUBSCRIBED") {
-          channel.track({ id, name, color, joinedAt: Date.now() } as PresenceMeta);
+          channel.track({ id, name, color, avatar, joinedAt: Date.now() } as PresenceMeta);
           setPhase("ready");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           fail("Conexão em tempo real falhou");
@@ -240,6 +243,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         id: meta.id,
         name: meta.name,
         color: meta.color,
+        avatar: meta.avatar ?? null,
         progress: pr?.progress ?? 0,
         wpm: pr?.wpm ?? 0,
         accuracy: pr?.accuracy ?? 100,

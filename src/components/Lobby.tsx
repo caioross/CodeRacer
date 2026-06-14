@@ -190,16 +190,27 @@ export function Lobby({
                 className="card p-3 flex items-center gap-2"
                 style={{ borderColor: `${p.color}40` }}
               >
-                <div
-                  className="size-8 rounded-md grid place-items-center font-bold text-xs"
-                  style={{
-                    background: `${p.color}20`,
-                    color: p.color,
-                    boxShadow: `0 0 12px ${p.color}40`
-                  }}
-                >
-                  {p.name.slice(0, 2).toUpperCase()}
-                </div>
+                {p.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.avatar}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="size-8 rounded-md object-cover"
+                    style={{ boxShadow: `0 0 12px ${p.color}40` }}
+                  />
+                ) : (
+                  <div
+                    className="size-8 rounded-md grid place-items-center font-bold text-xs"
+                    style={{
+                      background: `${p.color}20`,
+                      color: p.color,
+                      boxShadow: `0 0 12px ${p.color}40`
+                    }}
+                  >
+                    {p.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-sm font-medium" style={{ color: p.color }}>
                     {p.name}

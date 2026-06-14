@@ -4,6 +4,7 @@ export interface Player {
   id: string;
   name: string;
   color: string;
+  avatar?: string | null;
   progress: number; // 0..1
   wpm: number;
   accuracy: number; // 0..100

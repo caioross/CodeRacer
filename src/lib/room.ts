@@ -56,6 +56,7 @@ export interface PresenceMeta {
   name: string;
   color: string;
   joinedAt: number;
+  avatar?: string | null;
 }
 
 export interface ChatMsg {
@@ -72,6 +73,7 @@ export interface LivePlayer {
   id: string;
   name: string;
   color: string;
+  avatar?: string | null;
   progress: number;
   wpm: number;
   accuracy: number;
