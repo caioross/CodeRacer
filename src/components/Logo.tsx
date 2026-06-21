@@ -1,8 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { DecryptedText } from "./effects/DecryptedText";
 
-export function Logo({ size = "lg" }: { size?: "sm" | "md" | "lg" | "xl" }) {
+export function Logo({
+  size = "lg",
+  decrypt = false
+}: {
+  size?: "sm" | "md" | "lg" | "xl";
+  decrypt?: boolean;
+}) {
   const sizes = {
     sm: { text: "text-xl", icon: "text-lg" },
     md: { text: "text-3xl", icon: "text-2xl" },
@@ -20,8 +27,17 @@ export function Logo({ size = "lg" }: { size?: "sm" | "md" | "lg" | "xl" }) {
         &gt;_
       </motion.span>
       <span className={`font-mono font-extrabold tracking-tight ${s.text}`}>
-        <span className="gradient-text">Code</span>
-        <span className="text-text">Racer</span>
+        {decrypt ? (
+          <>
+            <DecryptedText text="Code" className="gradient-text" durationMs={700} />
+            <DecryptedText text="Racer" className="text-text" durationMs={900} />
+          </>
+        ) : (
+          <>
+            <span className="gradient-text">Code</span>
+            <span className="text-text">Racer</span>
+          </>
+        )}
       </span>
     </div>
   );

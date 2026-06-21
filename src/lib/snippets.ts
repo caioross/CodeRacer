@@ -10,481 +10,2695 @@ export interface SnippetSeed {
 type Pool = Record<string, Partial<Record<Difficulty, SnippetSeed[]>>>;
 
 const SNIPPETS: Pool = {
-  javascript: {
+javascript: {
     easy: [
-      {
-        title: "FizzBuzz clássico",
-        code: `for (let i = 1; i <= 15; i++) {
-  if (i % 15 === 0) console.log("FizzBuzz");
-  else if (i % 3 === 0) console.log("Fizz");
-  else if (i % 5 === 0) console.log("Buzz");
-  else console.log(i);
-}`
-      },
-      {
-        title: "Soma de array",
-        code: `const sum = (arr) => arr.reduce((a, b) => a + b, 0);
-console.log(sum([1, 2, 3, 4, 5]));`
-      },
-      {
-        title: "Reverse string",
-        code: `function reverse(str) {
-  return str.split("").reverse().join("");
+      { title: "Soma de array", code: `function soma(numeros) {
+  let total = 0;
+  for (const n of numeros) {
+    total += n;
+  }
+  return total;
+}` },
+      { title: "Inverter string", code: `function inverter(texto) {
+  return texto.split("").reverse().join("");
+}` },
+      { title: "Número par", code: `function ehPar(n) {
+  return n % 2 === 0;
 }
-console.log(reverse("CodeRacer"));`
-      }
+
+const pares = [1, 2, 3, 4, 5, 6].filter(ehPar);
+console.log(pares);` },
+      { title: "Fatorial iterativo", code: `function fatorial(n) {
+  let resultado = 1;
+  for (let i = 2; i <= n; i++) {
+    resultado *= i;
+  }
+  return resultado;
+}` },
+      { title: "Maior valor", code: `function maior(lista) {
+  let max = lista[0];
+  for (const item of lista) {
+    if (item > max) max = item;
+  }
+  return max;
+}` }
     ],
     medium: [
-      {
-        title: "Debounce util",
-        code: `function debounce(fn, wait = 200) {
-  let t;
+      { title: "Debounce util", code: `function debounce(fn, delay) {
+  let timer;
   return function (...args) {
-    clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), wait);
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
   };
 }
 
-const log = debounce((q) => console.log("search:", q), 300);
-log("hello");`
-      },
-      {
-        title: "Fetch com retry",
-        code: `async function fetchJson(url, tries = 3) {
-  for (let i = 0; i < tries; i++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(res.statusText);
-      return await res.json();
-    } catch (err) {
-      if (i === tries - 1) throw err;
-    }
+const log = debounce((msg) => console.log(msg), 300);
+log("primeira");
+log("ultima");` },
+      { title: "Agrupar por chave", code: `function agruparPor(itens, chave) {
+  return itens.reduce((acc, item) => {
+    const valor = item[chave];
+    (acc[valor] = acc[valor] || []).push(item);
+    return acc;
+  }, {});
+}
+
+const usuarios = [{ tipo: "admin" }, { tipo: "user" }];
+console.log(agruparPor(usuarios, "tipo"));` },
+      { title: "Fetch com timeout", code: `async function fetchComTimeout(url, ms) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    const resposta = await fetch(url, { signal: controller.signal });
+    return await resposta.json();
+  } finally {
+    clearTimeout(id);
   }
-}`
-      }
+}` },
+      { title: "Achatar array", code: `function achatar(arr) {
+  return arr.reduce((plano, item) => {
+    if (Array.isArray(item)) {
+      return plano.concat(achatar(item));
+    }
+    return plano.concat(item);
+  }, []);
+}
+
+console.log(achatar([1, [2, [3, [4]], 5]]));` },
+      { title: "Contador de palavras", code: `function contarPalavras(texto) {
+  const mapa = new Map();
+  for (const palavra of texto.toLowerCase().split(/\s+/)) {
+    if (!palavra) continue;
+    mapa.set(palavra, (mapa.get(palavra) || 0) + 1);
+  }
+  return mapa;
+}` }
     ],
     hard: [
-      {
-        title: "LRU Cache (Map)",
-        code: `class LRU {
-  constructor(max = 100) { this.max = max; this.map = new Map(); }
-  get(key) {
-    if (!this.map.has(key)) return undefined;
-    const v = this.map.get(key);
-    this.map.delete(key); this.map.set(key, v);
-    return v;
+      { title: "Memoization genérica", code: `function memoize(fn) {
+  const cache = new Map();
+  return function (...args) {
+    const chave = JSON.stringify(args);
+    if (cache.has(chave)) {
+      return cache.get(chave);
+    }
+    const resultado = fn.apply(this, args);
+    cache.set(chave, resultado);
+    return resultado;
+  };
+}
+
+const fib = memoize(function (n) {
+  return n < 2 ? n : fib(n - 1) + fib(n - 2);
+});
+
+console.log(fib(40));` },
+      { title: "Promise pool", code: `async function poolDePromessas(tarefas, limite) {
+  const resultados = [];
+  const emExecucao = new Set();
+  for (const tarefa of tarefas) {
+    const p = Promise.resolve().then(() => tarefa());
+    resultados.push(p);
+    emExecucao.add(p);
+    p.finally(() => emExecucao.delete(p));
+    if (emExecucao.size >= limite) {
+      await Promise.race(emExecucao);
+    }
   }
-  set(key, value) {
-    if (this.map.has(key)) this.map.delete(key);
-    else if (this.map.size >= this.max) this.map.delete(this.map.keys().next().value);
-    this.map.set(key, value);
+  return Promise.all(resultados);
+}` },
+      { title: "EventEmitter simples", code: `class EventEmitter {
+  constructor() {
+    this.ouvintes = new Map();
   }
-}`
-      }
+
+  on(evento, callback) {
+    if (!this.ouvintes.has(evento)) {
+      this.ouvintes.set(evento, []);
+    }
+    this.ouvintes.get(evento).push(callback);
+    return this;
+  }
+
+  emit(evento, ...args) {
+    const callbacks = this.ouvintes.get(evento) || [];
+    for (const cb of callbacks) {
+      cb(...args);
+    }
+    return this;
+  }
+}` },
+      { title: "Curry de função", code: `function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn.apply(this, args);
+    }
+    return function (...resto) {
+      return curried.apply(this, args.concat(resto));
+    };
+  };
+}
+
+const somar = curry((a, b, c) => a + b + c);
+console.log(somar(1)(2)(3));
+console.log(somar(1, 2)(3));` },
+      { title: "Deep clone", code: `function clonarProfundo(valor, visto = new WeakMap()) {
+  if (valor === null || typeof valor !== "object") {
+    return valor;
+  }
+  if (visto.has(valor)) {
+    return visto.get(valor);
+  }
+  const copia = Array.isArray(valor) ? [] : {};
+  visto.set(valor, copia);
+  for (const chave of Object.keys(valor)) {
+    copia[chave] = clonarProfundo(valor[chave], visto);
+  }
+  return copia;
+}` }
     ]
   },
   typescript: {
     easy: [
-      {
-        title: "Tipos básicos",
-        code: `type User = { id: string; name: string; age: number };
-
-const greet = (u: User): string => \`hi \${u.name}, \${u.age}\`;
-console.log(greet({ id: "1", name: "Caio", age: 28 }));`
-      },
-      {
-        title: "Filter genérico",
-        code: `function filter<T>(arr: T[], fn: (x: T) => boolean): T[] {
-  return arr.filter(fn);
+      { title: "Capitalizar texto", code: `function capitalizar(texto: string): string {
+  if (texto.length === 0) return texto;
+  return texto[0].toUpperCase() + texto.slice(1);
+}` },
+      { title: "Tipo de ponto", code: `interface Ponto {
+  x: number;
+  y: number;
 }
-const nums = filter([1, 2, 3, 4], (n) => n % 2 === 0);`
-      }
+
+function distancia(a: Ponto, b: Ponto): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}` },
+      { title: "Enum de status", code: `enum Status {
+  Ativo = "ATIVO",
+  Inativo = "INATIVO",
+}
+
+function descrever(s: Status): string {
+  return s === Status.Ativo ? "esta ativo" : "esta inativo";
+}` },
+      { title: "Soma variádica", code: `function somar(...valores: number[]): number {
+  return valores.reduce((acc, v) => acc + v, 0);
+}
+
+const total: number = somar(1, 2, 3, 4);
+console.log(total);` },
+      { title: "Filtrar definidos", code: `function semNulos<T>(itens: (T | null)[]): T[] {
+  return itens.filter((item): item is T => item !== null);
+}` }
     ],
     medium: [
-      {
-        title: "Result type",
-        code: `type Result<T, E = Error> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+      { title: "Resultado tipado", code: `type Resultado<T> =
+  | { ok: true; valor: T }
+  | { ok: false; erro: string };
 
-function divide(a: number, b: number): Result<number> {
-  if (b === 0) return { ok: false, error: new Error("div/0") };
-  return { ok: true, value: a / b };
-}`
-      }
+function dividir(a: number, b: number): Resultado<number> {
+  if (b === 0) {
+    return { ok: false, erro: "divisao por zero" };
+  }
+  return { ok: true, valor: a / b };
+}` },
+      { title: "Fila genérica", code: `class Fila<T> {
+  private itens: T[] = [];
+
+  enfileirar(item: T): void {
+    this.itens.push(item);
+  }
+
+  desenfileirar(): T | undefined {
+    return this.itens.shift();
+  }
+
+  get tamanho(): number {
+    return this.itens.length;
+  }
+}` },
+      { title: "Mapear registro", code: `function mapearValores<K extends string, A, B>(
+  registro: Record<K, A>,
+  fn: (valor: A) => B,
+): Record<K, B> {
+  const saida = {} as Record<K, B>;
+  for (const chave of Object.keys(registro) as K[]) {
+    saida[chave] = fn(registro[chave]);
+  }
+  return saida;
+}` },
+      { title: "Retry assíncrono", code: `async function tentarNovamente<T>(
+  fn: () => Promise<T>,
+  tentativas: number,
+): Promise<T> {
+  let ultimoErro: unknown;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn();
+    } catch (erro) {
+      ultimoErro = erro;
+    }
+  }
+  throw ultimoErro;
+}` },
+      { title: "Type guard de objeto", code: `interface Usuario {
+  nome: string;
+  idade: number;
+}
+
+function ehUsuario(valor: unknown): valor is Usuario {
+  return (
+    typeof valor === "object" &&
+    valor !== null &&
+    "nome" in valor &&
+    "idade" in valor
+  );
+}` }
     ],
     hard: [
-      {
-        title: "Mapped + Conditional",
-        code: `type DeepReadonly<T> = {
-  readonly [K in keyof T]: T[K] extends object ? DeepReadonly<T[K]> : T[K];
+      { title: "LRU Cache genérico", code: `class LRUCache<K, V> {
+  private mapa = new Map<K, V>();
+
+  constructor(private capacidade: number) {}
+
+  obter(chave: K): V | undefined {
+    if (!this.mapa.has(chave)) return undefined;
+    const valor = this.mapa.get(chave)!;
+    this.mapa.delete(chave);
+    this.mapa.set(chave, valor);
+    return valor;
+  }
+
+  inserir(chave: K, valor: V): void {
+    if (this.mapa.has(chave)) {
+      this.mapa.delete(chave);
+    } else if (this.mapa.size >= this.capacidade) {
+      const maisAntiga = this.mapa.keys().next().value;
+      this.mapa.delete(maisAntiga);
+    }
+    this.mapa.set(chave, valor);
+  }
+}` },
+      { title: "Pipe tipado", code: `type Fn<A, B> = (entrada: A) => B;
+
+function pipe<A, B, C>(f: Fn<A, B>, g: Fn<B, C>): Fn<A, C>;
+function pipe<A, B, C, D>(
+  f: Fn<A, B>,
+  g: Fn<B, C>,
+  h: Fn<C, D>,
+): Fn<A, D>;
+function pipe(...fns: Array<Fn<unknown, unknown>>): Fn<unknown, unknown> {
+  return (entrada: unknown) => fns.reduce((acc, fn) => fn(acc), entrada);
+}
+
+const transformar = pipe(
+  (x: number) => x + 1,
+  (x: number) => x * 2,
+  (x: number) => String(x),
+);` },
+      { title: "Observable mínimo", code: `type Observador<T> = (valor: T) => void;
+
+class Sujeito<T> {
+  private observadores = new Set<Observador<T>>();
+
+  inscrever(obs: Observador<T>): () => void {
+    this.observadores.add(obs);
+    return () => this.observadores.delete(obs);
+  }
+
+  emitir(valor: T): void {
+    for (const obs of this.observadores) {
+      obs(valor);
+    }
+  }
+}
+
+const fonte = new Sujeito<number>();
+const cancelar = fonte.inscrever((v) => console.log(v));
+fonte.emitir(42);
+cancelar();` },
+      { title: "Decorator de log", code: `function logado(
+  alvo: unknown,
+  chave: string,
+  descritor: PropertyDescriptor,
+): PropertyDescriptor {
+  const original = descritor.value;
+  descritor.value = function (...args: unknown[]) {
+    console.log("chamando " + chave, args);
+    const retorno = original.apply(this, args);
+    console.log("retornou", retorno);
+    return retorno;
+  };
+  return descritor;
+}
+
+class Calculadora {
+  @logado
+  somar(a: number, b: number): number {
+    return a + b;
+  }
+}` },
+      { title: "Deep Readonly", code: `type ProfundoSomenteLeitura<T> = {
+  readonly [K in keyof T]: T[K] extends object
+    ? ProfundoSomenteLeitura<T[K]>
+    : T[K];
 };
 
-type Config = { server: { port: number; host: string }; debug: boolean };
-const cfg: DeepReadonly<Config> = {
-  server: { port: 3000, host: "localhost" },
-  debug: true,
-};`
-      }
+interface Config {
+  servidor: {
+    host: string;
+    portas: number[];
+  };
+  debug: boolean;
+}
+
+const config: ProfundoSomenteLeitura<Config> = {
+  servidor: { host: "localhost", portas: [80, 443] },
+  debug: false,
+};` }
     ]
   },
   python: {
     easy: [
-      {
-        title: "FizzBuzz",
-        code: `for i in range(1, 16):
-    if i % 15 == 0:
-        print("FizzBuzz")
-    elif i % 3 == 0:
-        print("Fizz")
-    elif i % 5 == 0:
-        print("Buzz")
-    else:
-        print(i)`
-      },
-      {
-        title: "List comprehension",
-        code: `nums = [1, 2, 3, 4, 5, 6]
-squares = [n * n for n in nums if n % 2 == 0]
-print(squares)`
-      }
+      { title: "Soma de lista", code: `def soma(numeros):
+    total = 0
+    for n in numeros:
+        total += n
+    return total` },
+      { title: "Verificar palíndromo", code: `def eh_palindromo(texto):
+    limpo = texto.lower().replace(" ", "")
+    return limpo == limpo[::-1]` },
+      { title: "Contagem regressiva", code: `def contagem_regressiva(n):
+    while n > 0:
+        print(n)
+        n -= 1
+    print("fim")` },
+      { title: "Média de notas", code: `def media(notas):
+    if not notas:
+        return 0.0
+    return sum(notas) / len(notas)
+
+
+print(media([7.5, 8.0, 6.5]))` },
+      { title: "Quadrados pares", code: `def quadrados_pares(limite):
+    return [x * x for x in range(limite) if x % 2 == 0]
+
+
+print(quadrados_pares(10))` }
     ],
     medium: [
-      {
-        title: "Word counter",
-        code: `from collections import Counter
+      { title: "Sequência de Fibonacci", code: `def fibonacci(n):
+    a, b = 0, 1
+    sequencia = []
+    for _ in range(n):
+        sequencia.append(a)
+        a, b = b, a + b
+    return sequencia
 
-text = "the quick brown fox jumps over the lazy dog the fox"
-counts = Counter(text.lower().split())
-for word, n in counts.most_common(3):
-    print(f"{word}: {n}")`
-      },
-      {
-        title: "Decorator de cache",
-        code: `from functools import lru_cache
 
-@lru_cache(maxsize=128)
-def fib(n: int) -> int:
-    if n < 2:
-        return n
-    return fib(n - 1) + fib(n - 2)
+print(fibonacci(10))` },
+      { title: "Decorator de tempo", code: `import time
+from functools import wraps
 
-print(fib(30))`
-      }
+
+def cronometrar(funcao):
+    @wraps(funcao)
+    def invocar(*args, **kwargs):
+        inicio = time.perf_counter()
+        resultado = funcao(*args, **kwargs)
+        duracao = time.perf_counter() - inicio
+        print(f"{funcao.__name__} levou {duracao:.4f}s")
+        return resultado
+    return invocar` },
+      { title: "Agrupar por paridade", code: `from collections import defaultdict
+
+
+def agrupar_paridade(numeros):
+    grupos = defaultdict(list)
+    for n in numeros:
+        chave = "par" if n % 2 == 0 else "impar"
+        grupos[chave].append(n)
+    return dict(grupos)
+
+
+print(agrupar_paridade([1, 2, 3, 4, 5]))` },
+      { title: "Gerador de lotes", code: `def em_lotes(iteravel, tamanho):
+    lote = []
+    for item in iteravel:
+        lote.append(item)
+        if len(lote) == tamanho:
+            yield lote
+            lote = []
+    if lote:
+        yield lote
+
+
+for grupo in em_lotes(range(7), 3):
+    print(grupo)` },
+      { title: "Contexto de arquivo", code: `from contextlib import contextmanager
+
+
+@contextmanager
+def aberto_seguro(caminho, modo):
+    arquivo = open(caminho, modo, encoding="utf-8")
+    try:
+        yield arquivo
+    finally:
+        arquivo.close()
+
+
+with aberto_seguro("dados.txt", "w") as f:
+    f.write("ola")` }
     ],
     hard: [
-      {
-        title: "Async producer/consumer",
-        code: `import asyncio
+      { title: "Busca binária", code: `def busca_binaria(lista, alvo):
+    inicio, fim = 0, len(lista) - 1
+    while inicio <= fim:
+        meio = (inicio + fim) // 2
+        if lista[meio] == alvo:
+            return meio
+        if lista[meio] < alvo:
+            inicio = meio + 1
+        else:
+            fim = meio - 1
+    return -1
 
-async def producer(q: asyncio.Queue):
-    for i in range(5):
-        await q.put(i)
-        await asyncio.sleep(0.1)
-    await q.put(None)
 
-async def consumer(q: asyncio.Queue):
-    while True:
-        item = await q.get()
-        if item is None:
-            break
-        print("got", item)
+indices = busca_binaria([1, 3, 5, 7, 9, 11], 7)
+print(indices)` },
+      { title: "Ordenação merge sort", code: `def merge_sort(lista):
+    if len(lista) <= 1:
+        return lista
+    meio = len(lista) // 2
+    esquerda = merge_sort(lista[:meio])
+    direita = merge_sort(lista[meio:])
+    return intercalar(esquerda, direita)
 
-async def main():
-    q: asyncio.Queue = asyncio.Queue()
-    await asyncio.gather(producer(q), consumer(q))
 
-asyncio.run(main())`
-      }
+def intercalar(a, b):
+    resultado = []
+    i = j = 0
+    while i < len(a) and j < len(b):
+        if a[i] <= b[j]:
+            resultado.append(a[i])
+            i += 1
+        else:
+            resultado.append(b[j])
+            j += 1
+    resultado.extend(a[i:])
+    resultado.extend(b[j:])
+    return resultado` },
+      { title: "Classe de dados", code: `from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass(order=True)
+class Produto:
+    nome: str = field(compare=False)
+    preco: float = 0.0
+    tags: List[str] = field(default_factory=list, compare=False)
+
+    def com_desconto(self, percentual):
+        fator = 1 - percentual / 100
+        return Produto(self.nome, self.preco * fator, list(self.tags))
+
+
+itens = [Produto("A", 30.0), Produto("B", 10.0)]
+itens.sort()
+print(itens[0].nome)` },
+      { title: "Memoização com lru_cache", code: `from functools import lru_cache
+
+
+@lru_cache(maxsize=None)
+def caminhos(linhas, colunas):
+    if linhas == 0 or colunas == 0:
+        return 1
+    return caminhos(linhas - 1, colunas) + caminhos(linhas, colunas - 1)
+
+
+def total_caminhos(grade):
+    return caminhos(grade, grade)
+
+
+print(total_caminhos(10))` },
+      { title: "Travessia em largura", code: `from collections import deque
+
+
+def bfs(grafo, inicio):
+    visitados = set()
+    fila = deque([inicio])
+    ordem = []
+    while fila:
+        no = fila.popleft()
+        if no in visitados:
+            continue
+        visitados.add(no)
+        ordem.append(no)
+        for vizinho in grafo.get(no, []):
+            if vizinho not in visitados:
+                fila.append(vizinho)
+    return ordem
+
+
+grafo = {"a": ["b", "c"], "b": ["d"], "c": ["d"], "d": []}
+print(bfs(grafo, "a"))` }
     ]
   },
-  java: {
+java: {
     easy: [
-      {
-        title: "Hello World",
-        code: `public class Main {
+      { title: "Olá mundo", code: `public class Main {
     public static void main(String[] args) {
-        for (int i = 1; i <= 5; i++) {
-            System.out.println("Hello #" + i);
-        }
+        System.out.println("Olá, mundo!");
     }
-}`
-      }
+}` },
+      { title: "Soma de inteiros", code: `public class Calculadora {
+    public int somar(int a, int b) {
+        return a + b;
+    }
+}` },
+      { title: "Fatorial iterativo", code: `public long fatorial(int n) {
+    long resultado = 1;
+    for (int i = 2; i <= n; i++) {
+        resultado *= i;
+    }
+    return resultado;
+}` },
+      { title: "Número par", code: `public boolean ehPar(int numero) {
+    return numero % 2 == 0;
+}` },
+      { title: "Inverter texto", code: `public String inverter(String texto) {
+    StringBuilder sb = new StringBuilder(texto);
+    return sb.reverse().toString();
+}` }
     ],
     medium: [
-      {
-        title: "Stream API",
-        code: `import java.util.*;
-import java.util.stream.*;
+      { title: "Stream API", code: `import java.util.List;
 
-public class Sum {
-    public static void main(String[] args) {
-        List<Integer> nums = Arrays.asList(1, 2, 3, 4, 5);
-        int total = nums.stream()
+public int somarPares(List<Integer> numeros) {
+    return numeros.stream()
             .filter(n -> n % 2 == 0)
             .mapToInt(Integer::intValue)
             .sum();
-        System.out.println(total);
+}` },
+      { title: "Busca binária", code: `public int buscaBinaria(int[] arr, int alvo) {
+    int baixo = 0, alto = arr.length - 1;
+    while (baixo <= alto) {
+        int meio = baixo + (alto - baixo) / 2;
+        if (arr[meio] == alvo) {
+            return meio;
+        } else if (arr[meio] < alvo) {
+            baixo = meio + 1;
+        } else {
+            alto = meio - 1;
+        }
     }
-}`
-      }
+    return -1;
+}` },
+      { title: "Agrupar por tamanho", code: `import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public Map<Integer, List<String>> agrupar(List<String> palavras) {
+    return palavras.stream()
+            .collect(Collectors.groupingBy(String::length));
+}` },
+      { title: "Record imutável", code: `public record Ponto(int x, int y) {
+    public double distancia(Ponto outro) {
+        int dx = x - outro.x();
+        int dy = y - outro.y();
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+}` },
+      { title: "Contar frequência", code: `import java.util.HashMap;
+import java.util.Map;
+
+public Map<Character, Integer> contar(String texto) {
+    Map<Character, Integer> freq = new HashMap<>();
+    for (char c : texto.toCharArray()) {
+        freq.merge(c, 1, Integer::sum);
+    }
+    return freq;
+}` }
     ],
     hard: [
-      {
-        title: "Generic Pair",
-        code: `public class Pair<A, B> {
-    private final A first;
-    private final B second;
+      { title: "Generics com limites", code: `import java.util.List;
 
-    public Pair(A first, B second) {
-        this.first = first;
-        this.second = second;
+public class Caixa<T extends Comparable<T>> {
+    private final List<T> itens;
+
+    public Caixa(List<T> itens) {
+        this.itens = itens;
     }
 
-    public A getFirst() { return first; }
-    public B getSecond() { return second; }
-
-    @Override
-    public String toString() {
-        return "(" + first + ", " + second + ")";
+    public T maximo() {
+        T max = itens.get(0);
+        for (T item : itens) {
+            if (item.compareTo(max) > 0) {
+                max = item;
+            }
+        }
+        return max;
     }
-}`
-      }
+}` },
+      { title: "Produtor consumidor", code: `import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+public class Buffer {
+    private final BlockingQueue<Integer> fila = new LinkedBlockingQueue<>(10);
+
+    public void produzir(int valor) throws InterruptedException {
+        fila.put(valor);
+    }
+
+    public int consumir() throws InterruptedException {
+        return fila.take();
+    }
+}` },
+      { title: "Padrão Builder", code: `public class Usuario {
+    private final String nome;
+    private final int idade;
+
+    private Usuario(Builder builder) {
+        this.nome = builder.nome;
+        this.idade = builder.idade;
+    }
+
+    public static class Builder {
+        private String nome;
+        private int idade;
+
+        public Builder nome(String nome) {
+            this.nome = nome;
+            return this;
+        }
+
+        public Builder idade(int idade) {
+            this.idade = idade;
+            return this;
+        }
+
+        public Usuario build() {
+            return new Usuario(this);
+        }
+    }
+}` },
+      { title: "Memoização com cache", code: `import java.util.HashMap;
+import java.util.Map;
+
+public class Fibonacci {
+    private final Map<Integer, Long> cache = new HashMap<>();
+
+    public long calcular(int n) {
+        if (n <= 1) {
+            return n;
+        }
+        return cache.computeIfAbsent(n, k -> calcular(k - 1) + calcular(k - 2));
+    }
+}` },
+      { title: "CompletableFuture", code: `import java.util.concurrent.CompletableFuture;
+
+public class Servico {
+    public CompletableFuture<String> buscarDados() {
+        return CompletableFuture
+                .supplyAsync(() -> "dados brutos")
+                .thenApply(String::toUpperCase)
+                .thenApply(s -> "[" + s + "]");
+    }
+}` }
     ]
   },
   csharp: {
     easy: [
-      {
-        title: "LINQ Where",
-        code: `using System;
-using System.Linq;
+      { title: "Olá mundo", code: `using System;
 
-class Program {
-    static void Main() {
-        var nums = new[] { 1, 2, 3, 4, 5 };
-        var even = nums.Where(n => n % 2 == 0).ToArray();
-        Console.WriteLine(string.Join(",", even));
+class Program
+{
+    static void Main()
+    {
+        Console.WriteLine("Olá, mundo!");
     }
-}`
-      }
+}` },
+      { title: "Propriedade automática", code: `public class Pessoa
+{
+    public string Nome { get; set; }
+    public int Idade { get; set; }
+}` },
+      { title: "Verificar primo", code: `public bool EhPrimo(int n)
+{
+    if (n < 2) return false;
+    for (int i = 2; i * i <= n; i++)
+    {
+        if (n % i == 0) return false;
+    }
+    return true;
+}` },
+      { title: "Somar lista", code: `public int Somar(int[] numeros)
+{
+    int total = 0;
+    foreach (int n in numeros)
+    {
+        total += n;
+    }
+    return total;
+}` },
+      { title: "Expressão lambda", code: `using System;
+
+Func<int, int, int> multiplicar = (a, b) => a * b;
+Console.WriteLine(multiplicar(6, 7));` }
     ],
     medium: [
-      {
-        title: "Async/await HTTP",
-        code: `using System;
-using System.Net.Http;
+      { title: "Consulta LINQ", code: `using System.Collections.Generic;
+using System.Linq;
+
+public List<int> FiltrarPares(List<int> numeros)
+{
+    return numeros
+        .Where(n => n % 2 == 0)
+        .OrderByDescending(n => n)
+        .ToList();
+}` },
+      { title: "Dicionário agrupado", code: `using System.Collections.Generic;
+using System.Linq;
+
+public Dictionary<char, int> Frequencia(string texto)
+{
+    return texto
+        .GroupBy(c => c)
+        .ToDictionary(g => g.Key, g => g.Count());
+}` },
+      { title: "Método assíncrono", code: `using System.Net.Http;
 using System.Threading.Tasks;
 
-class Program {
-    static async Task Main() {
-        using var http = new HttpClient();
-        var body = await http.GetStringAsync("https://example.com");
-        Console.WriteLine(body.Length);
-    }
-}`
-      }
+public async Task<string> BaixarAsync(string url)
+{
+    using var cliente = new HttpClient();
+    string conteudo = await cliente.GetStringAsync(url);
+    return conteudo.Trim();
+}` },
+      { title: "Pattern matching", code: `public string Descrever(object valor) => valor switch
+{
+    int n when n > 0 => "positivo",
+    int => "não positivo",
+    string s => $"texto de {s.Length} chars",
+    null => "nulo",
+    _ => "desconhecido"
+};` },
+      { title: "Record com with", code: `public record Produto(string Nome, decimal Preco);
+
+public Produto AplicarDesconto(Produto p, decimal pct)
+{
+    return p with { Preco = p.Preco * (1 - pct) };
+}` }
     ],
     hard: [
-      {
-        title: "Record + pattern matching",
-        code: `using System;
+      { title: "Método de extensão", code: `using System;
+using System.Collections.Generic;
 
-public record Shape;
-public record Circle(double Radius) : Shape;
-public record Square(double Side) : Shape;
-
-class Program {
-    static double Area(Shape s) => s switch {
-        Circle c => Math.PI * c.Radius * c.Radius,
-        Square q => q.Side * q.Side,
-        _ => 0
-    };
-
-    static void Main() {
-        Console.WriteLine(Area(new Circle(3)));
-        Console.WriteLine(Area(new Square(4)));
+public static class Extensoes
+{
+    public static IEnumerable<IEnumerable<T>> EmLotes<T>(
+        this IEnumerable<T> fonte, int tamanho)
+    {
+        var lote = new List<T>(tamanho);
+        foreach (var item in fonte)
+        {
+            lote.Add(item);
+            if (lote.Count == tamanho)
+            {
+                yield return lote;
+                lote = new List<T>(tamanho);
+            }
+        }
+        if (lote.Count > 0)
+        {
+            yield return lote;
+        }
     }
-}`
-      }
+}` },
+      { title: "Cancelamento de tarefa", code: `using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Trabalhador
+{
+    public async Task ProcessarAsync(CancellationToken token)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            await Task.Delay(50, token);
+            Console.WriteLine($"Etapa {i} concluída");
+        }
+    }
+}` },
+      { title: "IDisposable e using", code: `using System;
+
+public class Recurso : IDisposable
+{
+    private bool _liberado;
+
+    public void Usar()
+    {
+        if (_liberado)
+        {
+            throw new ObjectDisposedException(nameof(Recurso));
+        }
+        Console.WriteLine("Usando recurso");
+    }
+
+    public void Dispose()
+    {
+        if (!_liberado)
+        {
+            Console.WriteLine("Liberando recurso");
+            _liberado = true;
+        }
+    }
+}` },
+      { title: "Genérico com restrição", code: `using System;
+using System.Collections.Generic;
+
+public class Repositorio<T> where T : class, new()
+{
+    private readonly List<T> _itens = new();
+
+    public T Criar()
+    {
+        var item = new T();
+        _itens.Add(item);
+        return item;
+    }
+
+    public IReadOnlyList<T> Todos => _itens.AsReadOnly();
+}` },
+      { title: "Evento e delegate", code: `using System;
+
+public class Botao
+{
+    public event EventHandler<string> Clicado;
+
+    public void Pressionar(string rotulo)
+    {
+        OnClicado(rotulo);
+    }
+
+    protected virtual void OnClicado(string rotulo)
+    {
+        Clicado?.Invoke(this, rotulo);
+    }
+}` }
     ]
   },
   cpp: {
     easy: [
-      {
-        title: "Hello loop",
-        code: `#include <iostream>
+      { title: "Olá mundo", code: `#include <iostream>
 
 int main() {
-    for (int i = 0; i < 5; ++i) {
-        std::cout << "i = " << i << "\\n";
-    }
+    std::cout << "Olá, mundo!" << std::endl;
     return 0;
-}`
-      }
+}` },
+      { title: "Troca por referência", code: `void trocar(int& a, int& b) {
+    int temp = a;
+    a = b;
+    b = temp;
+}` },
+      { title: "Máximo divisor comum", code: `int mdc(int a, int b) {
+    while (b != 0) {
+        int t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}` },
+      { title: "Soma de vetor", code: `#include <vector>
+
+int somar(const std::vector<int>& v) {
+    int total = 0;
+    for (int x : v) {
+        total += x;
+    }
+    return total;
+}` },
+      { title: "Potência recursiva", code: `long long potencia(int base, int exp) {
+    if (exp == 0) {
+        return 1;
+    }
+    return base * potencia(base, exp - 1);
+}` }
     ],
     medium: [
-      {
-        title: "Vector + algorithm",
-        code: `#include <iostream>
-#include <vector>
+      { title: "Ordenar com lambda", code: `#include <vector>
 #include <algorithm>
 
-int main() {
-    std::vector<int> v{5, 2, 8, 1, 9, 3};
-    std::sort(v.begin(), v.end());
-    for (int x : v) std::cout << x << " ";
-    std::cout << "\\n";
-    return 0;
-}`
-      }
-    ],
-    hard: [
-      {
-        title: "Template + RAII",
-        code: `#include <memory>
-#include <iostream>
+void ordenarDecrescente(std::vector<int>& v) {
+    std::sort(v.begin(), v.end(), [](int a, int b) {
+        return a > b;
+    });
+}` },
+      { title: "Mapa de frequência", code: `#include <string>
+#include <unordered_map>
 
-template <typename T>
-class Stack {
-    std::unique_ptr<T[]> data;
-    size_t cap, top = 0;
-public:
-    explicit Stack(size_t c) : data(std::make_unique<T[]>(c)), cap(c) {}
-    void push(T v) { if (top < cap) data[top++] = v; }
-    T pop() { return data[--top]; }
-    bool empty() const { return top == 0; }
+std::unordered_map<char, int> contar(const std::string& texto) {
+    std::unordered_map<char, int> freq;
+    for (char c : texto) {
+        ++freq[c];
+    }
+    return freq;
+}` },
+      { title: "Template de máximo", code: `template <typename T>
+T maximo(const T& a, const T& b) {
+    return (a > b) ? a : b;
+}
+
+#include <string>
+auto m = maximo<std::string>("abc", "xyz");` },
+      { title: "Transform e acumular", code: `#include <vector>
+#include <numeric>
+#include <algorithm>
+
+int somaQuadrados(const std::vector<int>& v) {
+    std::vector<int> q(v.size());
+    std::transform(v.begin(), v.end(), q.begin(), [](int x) {
+        return x * x;
+    });
+    return std::accumulate(q.begin(), q.end(), 0);
+}` },
+      { title: "Struct com operador", code: `#include <iostream>
+
+struct Vetor2D {
+    double x, y;
+
+    Vetor2D operator+(const Vetor2D& o) const {
+        return {x + o.x, y + o.y};
+    }
 };
 
-int main() {
-    Stack<int> s(8);
-    s.push(1); s.push(2); s.push(3);
-    while (!s.empty()) std::cout << s.pop() << " ";
-}`
-      }
+std::ostream& operator<<(std::ostream& os, const Vetor2D& v) {
+    return os << "(" << v.x << ", " << v.y << ")";
+}` }
+    ],
+    hard: [
+      { title: "Smart pointer único", code: `#include <memory>
+#include <string>
+#include <iostream>
+
+class Recurso {
+public:
+    explicit Recurso(std::string nome) : nome_(std::move(nome)) {
+        std::cout << "Criando " << nome_ << "\n";
+    }
+    ~Recurso() {
+        std::cout << "Destruindo " << nome_ << "\n";
+    }
+    void usar() const {
+        std::cout << "Usando " << nome_ << "\n";
+    }
+private:
+    std::string nome_;
+};
+
+void exemplo() {
+    auto r = std::make_unique<Recurso>("buffer");
+    r->usar();
+}` },
+      { title: "RAII com lock", code: `#include <mutex>
+#include <thread>
+#include <vector>
+
+class Contador {
+public:
+    void incrementar() {
+        std::lock_guard<std::mutex> trava(mutex_);
+        ++valor_;
+    }
+    int valor() const {
+        std::lock_guard<std::mutex> trava(mutex_);
+        return valor_;
+    }
+private:
+    mutable std::mutex mutex_;
+    int valor_ = 0;
+};` },
+      { title: "Template variádico", code: `#include <iostream>
+
+template <typename T>
+T somar(T valor) {
+    return valor;
+}
+
+template <typename T, typename... Args>
+T somar(T primeiro, Args... resto) {
+    return primeiro + somar(resto...);
+}
+
+void exemplo() {
+    std::cout << somar(1, 2, 3, 4, 5) << "\n";
+    std::cout << somar(1.5, 2.5, 3.0) << "\n";
+}` },
+      { title: "Move semantics", code: `#include <vector>
+#include <utility>
+#include <iostream>
+
+class Buffer {
+public:
+    explicit Buffer(size_t n) : dados_(n) {}
+
+    Buffer(Buffer&& outro) noexcept
+        : dados_(std::move(outro.dados_)) {
+        std::cout << "Movido\n";
+    }
+
+    Buffer& operator=(Buffer&& outro) noexcept {
+        dados_ = std::move(outro.dados_);
+        return *this;
+    }
+
+    size_t tamanho() const {
+        return dados_.size();
+    }
+private:
+    std::vector<int> dados_;
+};` },
+      { title: "Functor com estado", code: `#include <vector>
+#include <algorithm>
+#include <iostream>
+
+class Acumulador {
+public:
+    void operator()(int x) {
+        soma_ += x;
+        ++contagem_;
+    }
+    double media() const {
+        return contagem_ == 0 ? 0.0 : static_cast<double>(soma_) / contagem_;
+    }
+private:
+    long soma_ = 0;
+    int contagem_ = 0;
+};
+
+void exemplo() {
+    std::vector<int> v = {10, 20, 30, 40};
+    Acumulador acc = std::for_each(v.begin(), v.end(), Acumulador());
+    std::cout << acc.media() << "\n";
+}` }
     ]
   },
-  go: {
+go: {
     easy: [
-      {
-        title: "Hello loop",
-        code: `package main
+      { title: "Olá mundo", code: `package main
 
 import "fmt"
 
 func main() {
-    for i := 0; i < 5; i++ {
-        fmt.Println("hello", i)
+    fmt.Println("Olá, mundo!")
+}` },
+      { title: "Laço com soma", code: `package main
+
+import "fmt"
+
+func main() {
+    soma := 0
+    for i := 1; i <= 10; i++ {
+        soma += i
     }
-}`
-      }
+    fmt.Println("Total:", soma)
+}` },
+      { title: "Função fatorial", code: `package main
+
+func fatorial(n int) int {
+    if n <= 1 {
+        return 1
+    }
+    return n * fatorial(n-1)
+}` },
+      { title: "Slice e append", code: `package main
+
+import "fmt"
+
+func main() {
+    nums := []int{2, 4, 6}
+    nums = append(nums, 8, 10)
+    for _, v := range nums {
+        fmt.Print(v, " ")
+    }
+}` },
+      { title: "Mapa de contagem", code: `package main
+
+import "fmt"
+
+func main() {
+    contagem := map[string]int{}
+    palavras := []string{"go", "go", "rust"}
+    for _, p := range palavras {
+        contagem[p]++
+    }
+    fmt.Println(contagem)
+}` }
     ],
     medium: [
-      {
-        title: "Goroutines + channel",
-        code: `package main
+      { title: "Goroutines + channel", code: `package main
 
 import (
     "fmt"
     "sync"
 )
 
-func worker(id int, jobs <-chan int, wg *sync.WaitGroup) {
+func main() {
+    var wg sync.WaitGroup
+    resultados := make(chan int, 5)
+    for i := 1; i <= 5; i++ {
+        wg.Add(1)
+        go func(n int) {
+            defer wg.Done()
+            resultados <- n * n
+        }(i)
+    }
+    wg.Wait()
+    close(resultados)
+    for r := range resultados {
+        fmt.Println(r)
+    }
+}` },
+      { title: "Tratamento de erro", code: `package main
+
+import (
+    "errors"
+    "fmt"
+)
+
+func dividir(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("divisão por zero")
+    }
+    return a / b, nil
+}
+
+func main() {
+    res, err := dividir(10, 0)
+    if err != nil {
+        fmt.Println("erro:", err)
+        return
+    }
+    fmt.Println(res)
+}` },
+      { title: "Struct com método", code: `package main
+
+import "fmt"
+
+type Retangulo struct {
+    largura, altura float64
+}
+
+func (r Retangulo) Area() float64 {
+    return r.largura * r.altura
+}
+
+func main() {
+    r := Retangulo{largura: 3, altura: 4}
+    fmt.Printf("Área: %.2f\n", r.Area())
+}` },
+      { title: "Interface e polimorfismo", code: `package main
+
+import "fmt"
+
+type Forma interface {
+    Area() float64
+}
+
+type Circulo struct {
+    raio float64
+}
+
+func (c Circulo) Area() float64 {
+    return 3.14159 * c.raio * c.raio
+}
+
+func imprimir(f Forma) {
+    fmt.Printf("%.2f\n", f.Area())
+}
+
+func main() {
+    imprimir(Circulo{raio: 2})
+}` },
+      { title: "Ordenação customizada", code: `package main
+
+import (
+    "fmt"
+    "sort"
+)
+
+func main() {
+    nomes := []string{"Caio", "Ana", "Bruno"}
+    sort.Slice(nomes, func(i, j int) bool {
+        return len(nomes[i]) < len(nomes[j])
+    })
+    fmt.Println(nomes)
+}` }
+    ],
+    hard: [
+      { title: "Worker pool", code: `package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+func worker(id int, jobs <-chan int, results chan<- int, wg *sync.WaitGroup) {
     defer wg.Done()
     for j := range jobs {
-        fmt.Printf("worker %d got %d\\n", id, j)
+        results <- j * 2
     }
 }
 
 func main() {
-    jobs := make(chan int, 5)
+    jobs := make(chan int, 100)
+    results := make(chan int, 100)
     var wg sync.WaitGroup
     for w := 1; w <= 3; w++ {
         wg.Add(1)
-        go worker(w, jobs, &wg)
+        go worker(w, jobs, results, &wg)
     }
-    for j := 1; j <= 5; j++ {
+    for j := 1; j <= 9; j++ {
         jobs <- j
     }
     close(jobs)
     wg.Wait()
-}`
-      }
-    ],
-    hard: [
-      {
-        title: "HTTP server + middleware",
-        code: `package main
+    close(results)
+    total := 0
+    for r := range results {
+        total += r
+    }
+    fmt.Println("Soma:", total)
+}` },
+      { title: "Servidor HTTP", code: `package main
 
 import (
+    "encoding/json"
     "log"
     "net/http"
-    "time"
 )
 
-func logger(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        start := time.Now()
-        next.ServeHTTP(w, r)
-        log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
-    })
+type Resposta struct {
+    Mensagem string \`json:"mensagem"\`
+    Status   int    \`json:"status"\`
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    resp := Resposta{Mensagem: "ok", Status: 200}
+    json.NewEncoder(w).Encode(resp)
 }
 
 func main() {
-    mux := http.NewServeMux()
-    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        w.Write([]byte("hello"))
-    })
-    log.Fatal(http.ListenAndServe(":8080", logger(mux)))
-}`
-      }
+    http.HandleFunc("/api", handler)
+    log.Println("Servindo na porta 8080")
+    log.Fatal(http.ListenAndServe(":8080", nil))
+}` },
+      { title: "Select com timeout", code: `package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func buscar(ch chan<- string) {
+    time.Sleep(100 * time.Millisecond)
+    ch <- "dados carregados"
+}
+
+func main() {
+    ch := make(chan string, 1)
+    go buscar(ch)
+    select {
+    case msg := <-ch:
+        fmt.Println("recebido:", msg)
+    case <-time.After(50 * time.Millisecond):
+        fmt.Println("timeout: operação lenta")
+    }
+}` },
+      { title: "Mutex e contador", code: `package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+type Contador struct {
+    mu    sync.Mutex
+    valor int
+}
+
+func (c *Contador) Incrementar() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.valor++
+}
+
+func main() {
+    c := &Contador{}
+    var wg sync.WaitGroup
+    for i := 0; i < 1000; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            c.Incrementar()
+        }()
+    }
+    wg.Wait()
+    fmt.Println("Valor final:", c.valor)
+}` },
+      { title: "Generics com restrição", code: `package main
+
+import "fmt"
+
+type Numero interface {
+    ~int | ~float64
+}
+
+func SomarTudo[T Numero](valores []T) T {
+    var total T
+    for _, v := range valores {
+        total += v
+    }
+    return total
+}
+
+func Mapear[T, U any](in []T, fn func(T) U) []U {
+    out := make([]U, len(in))
+    for i, v := range in {
+        out[i] = fn(v)
+    }
+    return out
+}
+
+func main() {
+    fmt.Println(SomarTudo([]int{1, 2, 3, 4}))
+    dobro := Mapear([]int{1, 2, 3}, func(n int) int { return n * 2 })
+    fmt.Println(dobro)
+}` }
     ]
   },
   rust: {
     easy: [
-      {
-        title: "Hello loop",
-        code: `fn main() {
-    for i in 0..5 {
-        println!("hello {}", i);
+      { title: "Olá mundo", code: `fn main() {
+    println!("Olá, mundo!");
+}` },
+      { title: "Laço com soma", code: `fn main() {
+    let mut soma = 0;
+    for i in 1..=10 {
+        soma += i;
     }
-}`
-      }
-    ],
-    medium: [
-      {
-        title: "Vec + iter",
-        code: `fn main() {
-    let nums = vec![1, 2, 3, 4, 5];
-    let squares: Vec<i32> = nums.iter().map(|n| n * n).collect();
-    let sum: i32 = squares.iter().sum();
-    println!("sum of squares = {}", sum);
-}`
-      }
-    ],
-    hard: [
-      {
-        title: "Trait + generics",
-        code: `use std::fmt::Display;
-
-trait Greet {
-    fn greet(&self) -> String;
+    println!("Total: {}", soma);
+}` },
+      { title: "Função quadrado", code: `fn quadrado(n: i32) -> i32 {
+    n * n
 }
 
-struct User<T: Display> { name: T }
+fn main() {
+    println!("{}", quadrado(7));
+}` },
+      { title: "Vetor e iteração", code: `fn main() {
+    let nums = vec![2, 4, 6, 8];
+    let dobro: Vec<i32> = nums.iter().map(|x| x * 2).collect();
+    println!("{:?}", dobro);
+}` },
+      { title: "Match em enum", code: `enum Cor {
+    Vermelho,
+    Verde,
+    Azul,
+}
 
-impl<T: Display> Greet for User<T> {
-    fn greet(&self) -> String {
-        format!("hello, {}!", self.name)
+fn nome(c: Cor) -> &'static str {
+    match c {
+        Cor::Vermelho => "vermelho",
+        Cor::Verde => "verde",
+        Cor::Azul => "azul",
+    }
+}` }
+    ],
+    medium: [
+      { title: "Option e if let", code: `fn primeiro_par(nums: &[i32]) -> Option<i32> {
+    for &n in nums {
+        if n % 2 == 0 {
+            return Some(n);
+        }
+    }
+    None
+}
+
+fn main() {
+    let dados = [1, 3, 5, 8, 9];
+    if let Some(p) = primeiro_par(&dados) {
+        println!("Primeiro par: {}", p);
+    } else {
+        println!("Nenhum par encontrado");
+    }
+}` },
+      { title: "Result com erro", code: `use std::num::ParseIntError;
+
+fn dobrar(texto: &str) -> Result<i32, ParseIntError> {
+    let n = texto.parse::<i32>()?;
+    Ok(n * 2)
+}
+
+fn main() {
+    match dobrar("21") {
+        Ok(v) => println!("Resultado: {}", v),
+        Err(e) => println!("Erro: {}", e),
+    }
+}` },
+      { title: "Struct com impl", code: `struct Ponto {
+    x: f64,
+    y: f64,
+}
+
+impl Ponto {
+    fn nova(x: f64, y: f64) -> Self {
+        Ponto { x, y }
+    }
+
+    fn distancia(&self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
     }
 }
 
 fn main() {
-    let u = User { name: "Caio" };
-    println!("{}", u.greet());
-}`
-      }
+    let p = Ponto::nova(3.0, 4.0);
+    println!("{}", p.distancia());
+}` },
+      { title: "Iterador com filter", code: `fn main() {
+    let numeros = vec![1, 2, 3, 4, 5, 6, 7, 8];
+    let soma_pares: i32 = numeros
+        .iter()
+        .filter(|&&x| x % 2 == 0)
+        .map(|&x| x * x)
+        .sum();
+    println!("Soma dos quadrados pares: {}", soma_pares);
+}` },
+      { title: "HashMap e entry", code: `use std::collections::HashMap;
+
+fn main() {
+    let texto = "a b a c b a";
+    let mut contagem: HashMap<&str, i32> = HashMap::new();
+    for palavra in texto.split_whitespace() {
+        *contagem.entry(palavra).or_insert(0) += 1;
+    }
+    let mut pares: Vec<_> = contagem.iter().collect();
+    pares.sort();
+    println!("{:?}", pares);
+}` }
+    ],
+    hard: [
+      { title: "Trait + generics", code: `use std::fmt::Display;
+
+trait Resumir {
+    fn resumo(&self) -> String;
+}
+
+struct Artigo {
+    titulo: String,
+    autor: String,
+}
+
+impl Resumir for Artigo {
+    fn resumo(&self) -> String {
+        format!("{} por {}", self.titulo, self.autor)
+    }
+}
+
+fn anunciar<T: Resumir + Display>(item: &T) {
+    println!("Novidade: {} ({})", item.resumo(), item);
+}
+
+impl Display for Artigo {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.titulo)
+    }
+}
+
+fn main() {
+    let a = Artigo {
+        titulo: String::from("Rust"),
+        autor: String::from("Caio"),
+    };
+    anunciar(&a);
+}` },
+      { title: "Threads e Arc<Mutex>", code: `use std::sync::{Arc, Mutex};
+use std::thread;
+
+fn main() {
+    let contador = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        let c = Arc::clone(&contador);
+        let h = thread::spawn(move || {
+            let mut num = c.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(h);
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    println!("Total: {}", *contador.lock().unwrap());
+}` },
+      { title: "Enum com impl e match", code: `enum Operacao {
+    Soma(f64, f64),
+    Sub(f64, f64),
+    Mul(f64, f64),
+    Div(f64, f64),
+}
+
+impl Operacao {
+    fn calcular(&self) -> Result<f64, String> {
+        match self {
+            Operacao::Soma(a, b) => Ok(a + b),
+            Operacao::Sub(a, b) => Ok(a - b),
+            Operacao::Mul(a, b) => Ok(a * b),
+            Operacao::Div(_, b) if *b == 0.0 => Err("divisão por zero".to_string()),
+            Operacao::Div(a, b) => Ok(a / b),
+        }
+    }
+}
+
+fn main() {
+    let ops = vec![Operacao::Soma(2.0, 3.0), Operacao::Div(10.0, 0.0)];
+    for op in &ops {
+        match op.calcular() {
+            Ok(r) => println!("= {}", r),
+            Err(e) => println!("erro: {}", e),
+        }
+    }
+}` },
+      { title: "Closures e ordenação", code: `#[derive(Debug)]
+struct Pessoa {
+    nome: String,
+    idade: u32,
+}
+
+fn main() {
+    let mut pessoas = vec![
+        Pessoa { nome: String::from("Ana"), idade: 30 },
+        Pessoa { nome: String::from("Bruno"), idade: 25 },
+        Pessoa { nome: String::from("Caio"), idade: 35 },
+    ];
+
+    pessoas.sort_by(|a, b| a.idade.cmp(&b.idade));
+
+    let media: f64 = pessoas.iter().map(|p| p.idade as f64).sum::<f64>()
+        / pessoas.len() as f64;
+
+    for p in &pessoas {
+        println!("{} tem {} anos", p.nome, p.idade);
+    }
+    println!("Idade média: {:.1}", media);
+}` },
+      { title: "Generic com trait bound", code: `use std::ops::Add;
+
+#[derive(Debug, Clone, Copy)]
+struct Vetor2D<T> {
+    x: T,
+    y: T,
+}
+
+impl<T: Add<Output = T> + Copy> Vetor2D<T> {
+    fn somar(&self, outro: &Vetor2D<T>) -> Vetor2D<T> {
+        Vetor2D {
+            x: self.x + outro.x,
+            y: self.y + outro.y,
+        }
+    }
+}
+
+fn main() {
+    let a = Vetor2D { x: 1, y: 2 };
+    let b = Vetor2D { x: 3, y: 4 };
+    let c = a.somar(&b);
+    println!("{:?}", c);
+}` }
     ]
-  }
+  },
+  sql: {
+    easy: [
+      { title: "SELECT com filtro", code: `SELECT nome, email
+FROM usuarios
+WHERE ativo = true
+ORDER BY nome ASC;` },
+      { title: "Contagem por status", code: `SELECT status, COUNT(*) AS total
+FROM pedidos
+GROUP BY status
+ORDER BY total DESC;` },
+      { title: "Inserção de registro", code: `INSERT INTO produtos (nome, preco, estoque)
+VALUES ('Teclado', 199.90, 50),
+       ('Mouse', 89.50, 120);` },
+      { title: "Atualização condicional", code: `UPDATE pedidos
+SET status = 'enviado',
+    atualizado_em = NOW()
+WHERE status = 'pago'
+  AND criado_em < CURRENT_DATE;` },
+      { title: "Filtro com intervalo", code: `SELECT id, valor, criado_em
+FROM transacoes
+WHERE valor BETWEEN 100 AND 500
+  AND criado_em >= '2026-01-01'
+ORDER BY valor DESC;` }
+    ],
+    medium: [
+      { title: "JOIN com agregação", code: `SELECT u.nome, COUNT(p.id) AS total_pedidos, SUM(p.valor) AS gasto
+FROM usuarios u
+JOIN pedidos p ON p.usuario_id = u.id
+WHERE p.status = 'pago'
+GROUP BY u.id, u.nome
+HAVING SUM(p.valor) > 1000
+ORDER BY gasto DESC;` },
+      { title: "LEFT JOIN com COALESCE", code: `SELECT c.nome, COALESCE(SUM(v.total), 0) AS faturamento
+FROM clientes c
+LEFT JOIN vendas v ON v.cliente_id = c.id
+GROUP BY c.id, c.nome
+ORDER BY faturamento DESC
+LIMIT 10;` },
+      { title: "Subconsulta com IN", code: `SELECT nome, email
+FROM usuarios
+WHERE id IN (
+    SELECT DISTINCT usuario_id
+    FROM pedidos
+    WHERE valor > 500
+      AND status = 'pago'
+)
+ORDER BY nome;` },
+      { title: "CASE com agregação", code: `SELECT
+    categoria,
+    COUNT(*) AS total,
+    SUM(CASE WHEN preco > 100 THEN 1 ELSE 0 END) AS caros,
+    AVG(preco) AS preco_medio
+FROM produtos
+GROUP BY categoria
+ORDER BY total DESC;` },
+      { title: "GROUP BY com data", code: `SELECT
+    DATE_TRUNC('month', criado_em) AS mes,
+    COUNT(*) AS pedidos,
+    SUM(valor) AS receita
+FROM pedidos
+WHERE status = 'pago'
+GROUP BY DATE_TRUNC('month', criado_em)
+ORDER BY mes;` }
+    ],
+    hard: [
+      { title: "CTE com window function", code: `WITH ranking_vendas AS (
+    SELECT
+        v.vendedor_id,
+        v.regiao,
+        SUM(v.total) AS total_regiao,
+        RANK() OVER (
+            PARTITION BY v.regiao
+            ORDER BY SUM(v.total) DESC
+        ) AS posicao
+    FROM vendas v
+    WHERE v.criado_em >= '2026-01-01'
+    GROUP BY v.vendedor_id, v.regiao
+)
+SELECT vendedor_id, regiao, total_regiao, posicao
+FROM ranking_vendas
+WHERE posicao <= 3
+ORDER BY regiao, posicao;` },
+      { title: "Média móvel com OVER", code: `SELECT
+    dia,
+    receita,
+    AVG(receita) OVER (
+        ORDER BY dia
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS media_movel_7d,
+    SUM(receita) OVER (
+        ORDER BY dia
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS receita_acumulada
+FROM receitas_diarias
+ORDER BY dia;` },
+      { title: "CTE recursiva hierárquica", code: `WITH RECURSIVE subordinados AS (
+    SELECT id, nome, gerente_id, 1 AS nivel
+    FROM funcionarios
+    WHERE gerente_id IS NULL
+
+    UNION ALL
+
+    SELECT f.id, f.nome, f.gerente_id, s.nivel + 1
+    FROM funcionarios f
+    JOIN subordinados s ON f.gerente_id = s.id
+)
+SELECT id, nome, nivel
+FROM subordinados
+ORDER BY nivel, nome;` },
+      { title: "LAG para variação", code: `WITH receita_mensal AS (
+    SELECT
+        DATE_TRUNC('month', criado_em) AS mes,
+        SUM(valor) AS receita
+    FROM pedidos
+    WHERE status = 'pago'
+    GROUP BY DATE_TRUNC('month', criado_em)
+)
+SELECT
+    mes,
+    receita,
+    LAG(receita) OVER (ORDER BY mes) AS mes_anterior,
+    ROUND(
+        100.0 * (receita - LAG(receita) OVER (ORDER BY mes))
+        / NULLIF(LAG(receita) OVER (ORDER BY mes), 0),
+        2
+    ) AS variacao_pct
+FROM receita_mensal
+ORDER BY mes;` },
+      { title: "Upsert com índice", code: `CREATE TABLE IF NOT EXISTS metricas (
+    chave TEXT PRIMARY KEY,
+    valor BIGINT NOT NULL DEFAULT 0,
+    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO metricas (chave, valor)
+VALUES ('visitas', 1)
+ON CONFLICT (chave)
+DO UPDATE SET
+    valor = metricas.valor + EXCLUDED.valor,
+    atualizado_em = NOW();
+
+SELECT chave, valor, atualizado_em
+FROM metricas
+WHERE chave = 'visitas';` }
+    ]
+  },
+bash: {
+    easy: [
+      { title: "Olá mundo", code: `#!/usr/bin/env bash
+name="World"
+echo "Hello, $name!"
+echo "Today is $(date +%A)"` },
+      { title: "Loop numérico", code: `#!/usr/bin/env bash
+for i in 1 2 3 4 5; do
+  echo "Contagem: $i"
+done` },
+      { title: "Condicional simples", code: `#!/usr/bin/env bash
+count=10
+if [ "$count" -gt 5 ]; then
+  echo "Maior que cinco"
+else
+  echo "Cinco ou menos"
+fi` },
+      { title: "Variáveis e soma", code: `#!/usr/bin/env bash
+a=7
+b=3
+sum=$((a + b))
+echo "A soma de $a e $b vale $sum"` },
+      { title: "Lista de frutas", code: `#!/usr/bin/env bash
+fruits=("maçã" "banana" "uva")
+for fruit in "\${fruits[@]}"; do
+  echo "Fruta: $fruit"
+done` }
+    ],
+    medium: [
+      { title: "Função com retorno", code: `#!/usr/bin/env bash
+greet() {
+  local name="$1"
+  if [ -z "$name" ]; then
+    name="visitante"
+  fi
+  echo "Bem-vindo, $name"
+}
+
+greet "Ana"
+greet` },
+      { title: "Loop sobre arquivos", code: `#!/usr/bin/env bash
+dir="\${1:-.}"
+total=0
+for file in "$dir"/*.txt; do
+  [ -e "$file" ] || continue
+  lines=$(wc -l < "$file")
+  echo "$file possui $lines linhas"
+  total=$((total + lines))
+done
+echo "Total de linhas: $total"` },
+      { title: "Leitura linha a linha", code: `#!/usr/bin/env bash
+input="\${1:-dados.txt}"
+count=0
+while IFS= read -r line; do
+  count=$((count + 1))
+  echo "$count: $line"
+done < "$input"
+echo "Lidas $count linhas no total"` },
+      { title: "Case com menu", code: `#!/usr/bin/env bash
+read -rp "Escolha [a/b/c]: " opt
+case "$opt" in
+  a) echo "Opção A selecionada" ;;
+  b) echo "Opção B selecionada" ;;
+  c) echo "Opção C selecionada" ;;
+  *) echo "Opção inválida" ;;
+esac` },
+      { title: "Backup com timestamp", code: `#!/usr/bin/env bash
+src="$1"
+if [ ! -f "$src" ]; then
+  echo "Arquivo não encontrado: $src" >&2
+  exit 1
+fi
+stamp=$(date +%Y%m%d_%H%M%S)
+cp "$src" "\${src}.\${stamp}.bak"
+echo "Backup criado: \${src}.\${stamp}.bak"` }
+    ],
+    hard: [
+      { title: "Parser de argumentos", code: `#!/usr/bin/env bash
+set -euo pipefail
+
+verbose=0
+output=""
+while getopts ":vo:h" opt; do
+  case "$opt" in
+    v) verbose=1 ;;
+    o) output="$OPTARG" ;;
+    h) echo "Uso: $0 [-v] [-o arquivo]"; exit 0 ;;
+    \\?) echo "Opção inválida: -$OPTARG" >&2; exit 1 ;;
+    :) echo "Faltou argumento para -$OPTARG" >&2; exit 1 ;;
+  esac
+done
+
+if [ "$verbose" -eq 1 ]; then
+  echo "Modo verboso ativado"
+fi
+echo "Saída: \${output:-stdout}"` },
+      { title: "Trap e limpeza", code: `#!/usr/bin/env bash
+set -euo pipefail
+
+tmpdir=$(mktemp -d)
+cleanup() {
+  rm -rf "$tmpdir"
+  echo "Diretório temporário removido"
+}
+trap cleanup EXIT INT TERM
+
+echo "Trabalhando em $tmpdir"
+for i in $(seq 1 3); do
+  echo "linha $i" > "\${tmpdir}/file_\${i}.txt"
+done
+count=$(find "$tmpdir" -type f | wc -l)
+echo "Criados $count arquivos"` },
+      { title: "Tentativas com recuo", code: `#!/usr/bin/env bash
+set -euo pipefail
+
+retry() {
+  local max="$1"; shift
+  local delay=1
+  local attempt=1
+  until "$@"; do
+    if [ "$attempt" -ge "$max" ]; then
+      echo "Falhou após $attempt tentativas" >&2
+      return 1
+    fi
+    echo "Tentativa $attempt falhou, aguardando \${delay}s"
+    sleep "$delay"
+    attempt=$((attempt + 1))
+    delay=$((delay * 2))
+  done
+}
+
+retry 4 curl -fsS https://example.com -o /dev/null
+echo "Requisição concluída"` },
+      { title: "Contagem de palavras", code: `#!/usr/bin/env bash
+set -euo pipefail
+
+declare -A freq
+file="\${1:?Informe um arquivo}"
+
+while read -r word; do
+  word="\${word,,}"
+  word="\${word//[^a-z]/}"
+  [ -n "$word" ] || continue
+  freq["$word"]=$(( \${freq["$word"]:-0} + 1 ))
+done < <(tr ' ' '\\n' < "$file")
+
+for key in "\${!freq[@]}"; do
+  echo "\${freq[$key]} $key"
+done | sort -rn | head -10` },
+      { title: "Verificação de saúde", code: `#!/usr/bin/env bash
+set -euo pipefail
+
+services=("nginx" "postgres" "redis")
+failed=()
+
+check_service() {
+  local name="$1"
+  if systemctl is-active --quiet "$name"; then
+    echo "[OK] $name está ativo"
+    return 0
+  fi
+  echo "[FALHA] $name está inativo" >&2
+  return 1
+}
+
+for svc in "\${services[@]}"; do
+  check_service "$svc" || failed+=("$svc")
+done
+
+if [ "\${#failed[@]}" -gt 0 ]; then
+  echo "Serviços com problema: \${failed[*]}"
+  exit 1
+fi
+echo "Todos os serviços operacionais"` }
+    ]
+  },
+  ruby: {
+    easy: [
+      { title: "Saudação simples", code: `name = "Mundo"
+puts "Olá, #{name}!"
+puts "O tamanho do nome é #{name.length}"` },
+      { title: "Iterar sobre vetor", code: `numbers = [1, 2, 3, 4, 5]
+numbers.each do |n|
+  puts "Valor: #{n}"
+end
+puts "Soma: #{numbers.sum}"` },
+      { title: "Condicional par ou ímpar", code: `n = 42
+if n.even?
+  puts "#{n} é par"
+else
+  puts "#{n} é ímpar"
+end` },
+      { title: "Mapa de quadrados", code: `squares = (1..5).map { |x| x * x }
+puts squares.inspect
+puts "Total: #{squares.sum}"` },
+      { title: "Hash básico", code: `person = { nome: "Ana", idade: 30 }
+person.each do |key, value|
+  puts "#{key}: #{value}"
+end` }
+    ],
+    medium: [
+      { title: "Bloco com yield", code: `def repeat(times)
+  result = []
+  times.times do |i|
+    result << yield(i)
+  end
+  result
+end
+
+squared = repeat(5) { |n| n * n }
+puts squared.inspect` },
+      { title: "Array funcional", code: `words = %w[banana maçã uva pera abacaxi]
+
+result = words
+  .select { |w| w.length > 3 }
+  .map(&:upcase)
+  .sort
+
+puts result.join(", ")
+puts "Total filtrado: #{result.size}"` },
+      { title: "Contador com hash", code: `text = "o rato roeu a roupa do rei de roma"
+
+freq = Hash.new(0)
+text.split.each do |word|
+  freq[word] += 1
+end
+
+freq.sort_by { |_, count| -count }.each do |word, count|
+  puts "#{word}: #{count}"
+end` },
+      { title: "Classe Retângulo", code: `class Rectangle
+  attr_reader :width, :height
+
+  def initialize(width, height)
+    @width = width
+    @height = height
+  end
+
+  def area
+    width * height
+  end
+
+  def to_s
+    "Retângulo #{width}x#{height} (área #{area})"
+  end
+end
+
+puts Rectangle.new(4, 6)` },
+      { title: "Leitura de arquivo", code: `total = 0
+File.foreach("dados.txt") do |line|
+  line.strip!
+  next if line.empty?
+  total += line.to_i
+end
+
+puts "Soma das linhas: #{total}"` }
+    ],
+    hard: [
+      { title: "Módulo Comparable", code: `class Version
+  include Comparable
+  attr_reader :major, :minor, :patch
+
+  def initialize(str)
+    @major, @minor, @patch = str.split(".").map(&:to_i)
+  end
+
+  def <=>(other)
+    [major, minor, patch] <=> [other.major, other.minor, other.patch]
+  end
+
+  def to_s
+    "#{major}.#{minor}.#{patch}"
+  end
+end
+
+versions = ["1.2.0", "1.10.1", "1.2.3"].map { |v| Version.new(v) }
+puts versions.sort.map(&:to_s).join(" < ")` },
+      { title: "Memoização Fibonacci", code: `class Fibonacci
+  def initialize
+    @cache = { 0 => 0, 1 => 1 }
+  end
+
+  def compute(n)
+    raise ArgumentError, "n deve ser >= 0" if n.negative?
+    @cache[n] ||= compute(n - 1) + compute(n - 2)
+  end
+end
+
+fib = Fibonacci.new
+(0..10).each do |i|
+  print "#{fib.compute(i)} "
+end
+puts` },
+      { title: "Tratamento de exceções", code: `class BankAccount
+  class InsufficientFunds < StandardError; end
+
+  attr_reader :balance
+
+  def initialize(balance = 0)
+    @balance = balance
+  end
+
+  def withdraw(amount)
+    raise InsufficientFunds, "Saldo insuficiente" if amount > @balance
+    @balance -= amount
+    @balance
+  end
+end
+
+account = BankAccount.new(100)
+begin
+  account.withdraw(150)
+rescue BankAccount::InsufficientFunds => e
+  puts "Erro: #{e.message}"
+ensure
+  puts "Saldo atual: #{account.balance}"
+end` },
+      { title: "Enumerable customizado", code: `class NumberCollection
+  include Enumerable
+
+  def initialize(*numbers)
+    @numbers = numbers
+  end
+
+  def each(&block)
+    @numbers.each(&block)
+  end
+end
+
+collection = NumberCollection.new(3, 1, 4, 1, 5, 9, 2, 6)
+puts "Máximo: #{collection.max}"
+puts "Pares: #{collection.select(&:even?).inspect}"
+puts "Ordenado: #{collection.sort.inspect}"
+puts "Soma: #{collection.reduce(:+)}"` },
+      { title: "Struct e agrupamento", code: `Employee = Struct.new(:name, :department, :salary) do
+  def annual
+    salary * 12
+  end
+end
+
+staff = [
+  Employee.new("Ana", "TI", 8000),
+  Employee.new("Bruno", "RH", 6000),
+  Employee.new("Carla", "TI", 9000)
+]
+
+by_dept = staff.group_by(&:department)
+by_dept.each do |dept, people|
+  total = people.sum(&:salary)
+  puts "#{dept}: #{people.size} pessoas, folha #{total}"
+end` }
+    ]
+  },
+  php: {
+    easy: [
+      { title: "Eco com variável", code: `<?php
+$name = "Mundo";
+echo "Olá, $name!\\n";
+echo "Tamanho: " . strlen($name) . "\\n";` },
+      { title: "Laço for", code: `<?php
+for ($i = 1; $i <= 5; $i++) {
+    echo "Número: $i\\n";
+}` },
+      { title: "Condicional if/else", code: `<?php
+$age = 20;
+if ($age >= 18) {
+    echo "Maior de idade\\n";
+} else {
+    echo "Menor de idade\\n";
+}` },
+      { title: "Array indexado", code: `<?php
+$fruits = ["maçã", "banana", "uva"];
+foreach ($fruits as $index => $fruit) {
+    echo "$index => $fruit\\n";
+}` },
+      { title: "Função de soma", code: `<?php
+function soma(int $a, int $b): int {
+    return $a + $b;
+}
+
+echo soma(7, 3) . "\\n";` }
+    ],
+    medium: [
+      { title: "Array associativo", code: `<?php
+$prices = [
+    "café" => 5.50,
+    "pão" => 0.75,
+    "leite" => 4.20,
+];
+
+$total = 0.0;
+foreach ($prices as $item => $price) {
+    printf("%-8s R$ %.2f\\n", $item, $price);
+    $total += $price;
+}
+printf("Total: R$ %.2f\\n", $total);` },
+      { title: "Filtro e mapa", code: `<?php
+$numbers = range(1, 10);
+
+$evens = array_filter($numbers, fn($n) => $n % 2 === 0);
+$doubled = array_map(fn($n) => $n * 2, $evens);
+
+echo implode(", ", $doubled) . "\\n";
+echo "Soma: " . array_sum($doubled) . "\\n";` },
+      { title: "Manipulação de string", code: `<?php
+$phrase = "  o rato roeu a roupa  ";
+$clean = trim($phrase);
+$words = explode(" ", $clean);
+
+$capitalized = array_map("ucfirst", $words);
+echo implode(" ", $capitalized) . "\\n";
+echo "Palavras: " . count($words) . "\\n";` },
+      { title: "Classe Produto", code: `<?php
+class Product {
+    public function __construct(
+        public string $name,
+        public float $price
+    ) {}
+
+    public function withTax(float $rate): float {
+        return $this->price * (1 + $rate);
+    }
+}
+
+$p = new Product("Teclado", 150.0);
+printf("%s com imposto: R$ %.2f\\n", $p->name, $p->withTax(0.1));` },
+      { title: "Leitura de arquivo", code: `<?php
+$path = $argv[1] ?? "dados.txt";
+$lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+$total = 0;
+foreach ($lines as $line) {
+    $total += (int) $line;
+}
+
+echo "Linhas: " . count($lines) . "\\n";
+echo "Soma: $total\\n";` }
+    ],
+    hard: [
+      { title: "Interface e polimorfismo", code: `<?php
+interface Shape {
+    public function area(): float;
+}
+
+class Circle implements Shape {
+    public function __construct(private float $radius) {}
+
+    public function area(): float {
+        return M_PI * $this->radius ** 2;
+    }
+}
+
+class Square implements Shape {
+    public function __construct(private float $side) {}
+
+    public function area(): float {
+        return $this->side ** 2;
+    }
+}
+
+$shapes = [new Circle(3), new Square(4)];
+foreach ($shapes as $shape) {
+    printf("%s: %.2f\\n", get_class($shape), $shape->area());
+}` },
+      { title: "Tratamento de exceções", code: `<?php
+class DivisionException extends Exception {}
+
+function divide(float $a, float $b): float {
+    if ($b === 0.0) {
+        throw new DivisionException("Divisão por zero");
+    }
+    return $a / $b;
+}
+
+$pairs = [[10, 2], [5, 0], [9, 3]];
+foreach ($pairs as [$a, $b]) {
+    try {
+        $result = divide($a, $b);
+        printf("%g / %g = %g\\n", $a, $b, $result);
+    } catch (DivisionException $e) {
+        echo "Erro: " . $e->getMessage() . "\\n";
+    }
+}` },
+      { title: "Agrupamento de dados", code: `<?php
+$people = [
+    ["name" => "Ana", "city" => "SP"],
+    ["name" => "Bruno", "city" => "RJ"],
+    ["name" => "Carla", "city" => "SP"],
+    ["name" => "Diego", "city" => "RJ"],
+];
+
+$grouped = [];
+foreach ($people as $person) {
+    $grouped[$person["city"]][] = $person["name"];
+}
+
+foreach ($grouped as $city => $names) {
+    echo "$city (" . count($names) . "): " . implode(", ", $names) . "\\n";
+}` },
+      { title: "Trait reutilizável", code: `<?php
+trait Loggable {
+    private array $logs = [];
+
+    public function log(string $message): void {
+        $this->logs[] = "[" . date("H:i:s") . "] $message";
+    }
+
+    public function dumpLogs(): void {
+        foreach ($this->logs as $entry) {
+            echo $entry . "\\n";
+        }
+    }
+}
+
+class Service {
+    use Loggable;
+
+    public function run(): void {
+        $this->log("Serviço iniciado");
+        $this->log("Processando dados");
+        $this->log("Serviço finalizado");
+    }
+}
+
+$service = new Service();
+$service->run();
+$service->dumpLogs();` },
+      { title: "Gerador de sequência", code: `<?php
+function fibonacci(int $limit): Generator {
+    [$a, $b] = [0, 1];
+    while ($a < $limit) {
+        yield $a;
+        [$a, $b] = [$b, $a + $b];
+    }
+}
+
+$sum = 0;
+foreach (fibonacci(100) as $value) {
+    echo "$value ";
+    $sum += $value;
+}
+echo "\\nSoma: $sum\\n";` }
+    ]
+  },
+kotlin: {
+    easy: [
+      { title: "Soma de lista", code: `fun somaLista(numeros: List<Int>): Int {
+    var total = 0
+    for (n in numeros) {
+        total += n
+    }
+    return total
+}` },
+      { title: "Número par", code: `fun ehPar(numero: Int): Boolean {
+    return numero % 2 == 0
+}
+
+fun main() {
+    println(ehPar(10))
+    println(ehPar(7))
+}` },
+      { title: "Fatorial recursivo", code: `fun fatorial(n: Int): Long {
+    if (n <= 1) return 1
+    return n * fatorial(n - 1)
+}` },
+      { title: "Maior valor", code: `fun maior(a: Int, b: Int): Int {
+    return if (a > b) a else b
+}
+
+fun main() {
+    println(maior(42, 17))
+}` },
+      { title: "Contagem regressiva", code: `fun contagem(inicio: Int) {
+    var i = inicio
+    while (i > 0) {
+        println(i)
+        i--
+    }
+    println("Fim")
+}` }
+    ],
+    medium: [
+      { title: "Data class", code: `data class Usuario(
+    val id: Int,
+    val nome: String,
+    val ativo: Boolean
+)
+
+fun main() {
+    val u = Usuario(1, "Caio", true)
+    val copia = u.copy(ativo = false)
+    println(copia)
+}` },
+      { title: "Filtrar e mapear", code: `fun nomesAtivos(usuarios: List<Usuario>): List<String> {
+    return usuarios
+        .filter { it.ativo }
+        .map { it.nome.uppercase() }
+        .sorted()
+}
+
+data class Usuario(val nome: String, val ativo: Boolean)` },
+      { title: "Agrupar por chave", code: `fun agruparPorTamanho(palavras: List<String>): Map<Int, List<String>> {
+    return palavras.groupBy { it.length }
+}
+
+fun main() {
+    val palavras = listOf("oi", "rua", "sol", "mar", "casa")
+    val grupos = agruparPorTamanho(palavras)
+    grupos.forEach { (tamanho, lista) ->
+        println("\$tamanho: \$lista")
+    }
+}` },
+      { title: "Extensão de String", code: `fun String.ehPalindromo(): Boolean {
+    val limpo = this.lowercase().filter { it.isLetter() }
+    return limpo == limpo.reversed()
+}
+
+fun main() {
+    println("Ame a ema".ehPalindromo())
+    println("Kotlin".ehPalindromo())
+}` },
+      { title: "Reduce e média", code: `fun media(notas: List<Double>): Double {
+    if (notas.isEmpty()) return 0.0
+    val soma = notas.reduce { acc, nota -> acc + nota }
+    return soma / notas.size
+}
+
+fun main() {
+    val notas = listOf(7.5, 8.0, 6.5, 9.0)
+    println("Média: \${media(notas)}")
+}` }
+    ],
+    hard: [
+      { title: "Sealed class resultado", code: `sealed class Resultado<out T> {
+    data class Sucesso<T>(val dado: T) : Resultado<T>()
+    data class Erro(val mensagem: String) : Resultado<Nothing>()
+}
+
+fun dividir(a: Int, b: Int): Resultado<Int> {
+    return if (b == 0) {
+        Resultado.Erro("Divisão por zero")
+    } else {
+        Resultado.Sucesso(a / b)
+    }
+}
+
+fun main() {
+    when (val r = dividir(10, 2)) {
+        is Resultado.Sucesso -> println("Valor: \${r.dado}")
+        is Resultado.Erro -> println("Falha: \${r.mensagem}")
+    }
+}` },
+      { title: "Coroutine async", code: `import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+
+suspend fun buscarPreco(id: Int): Int {
+    delay(100)
+    return id * 10
+}
+
+suspend fun totalCarrinho(ids: List<Int>): Int = coroutineScope {
+    val precos = ids.map { id ->
+        async { buscarPreco(id) }
+    }
+    precos.sumOf { it.await() }
+}` },
+      { title: "Enum com propriedades", code: `enum class Planeta(val massa: Double, val raio: Double) {
+    TERRA(5.976e24, 6.378e6),
+    MARTE(6.421e23, 3.397e6),
+    JUPITER(1.9e27, 7.149e7);
+
+    val gravidade: Double
+        get() = 6.67300e-11 * massa / (raio * raio)
+}
+
+fun main() {
+    for (p in Planeta.values()) {
+        println("\${p.name}: \${p.gravidade}")
+    }
+}` },
+      { title: "Interface genérica", code: `interface Repositorio<T, ID> {
+    fun salvar(item: T): T
+    fun buscarPorId(id: ID): T?
+    fun listarTodos(): List<T>
+}
+
+class MemoriaRepo<T> : Repositorio<T, Int> {
+    private val dados = mutableMapOf<Int, T>()
+    private var sequencia = 0
+
+    override fun salvar(item: T): T {
+        dados[++sequencia] = item
+        return item
+    }
+
+    override fun buscarPorId(id: Int): T? = dados[id]
+
+    override fun listarTodos(): List<T> = dados.values.toList()
+}` },
+      { title: "Função de extensão genérica", code: `fun <T> List<T>.particionar(predicado: (T) -> Boolean): Pair<List<T>, List<T>> {
+    val verdadeiros = mutableListOf<T>()
+    val falsos = mutableListOf<T>()
+    for (item in this) {
+        if (predicado(item)) {
+            verdadeiros.add(item)
+        } else {
+            falsos.add(item)
+        }
+    }
+    return Pair(verdadeiros, falsos)
+}
+
+fun main() {
+    val numeros = (1..10).toList()
+    val (pares, impares) = numeros.particionar { it % 2 == 0 }
+    println("Pares: \$pares")
+    println("Ímpares: \$impares")
+}` }
+    ]
+  },
+  swift: {
+    easy: [
+      { title: "Soma de array", code: `func soma(_ numeros: [Int]) -> Int {
+    var total = 0
+    for n in numeros {
+        total += n
+    }
+    return total
+}` },
+      { title: "Verifica primo", code: `func ehPrimo(_ n: Int) -> Bool {
+    if n < 2 { return false }
+    for i in 2..<n {
+        if n % i == 0 { return false }
+    }
+    return true
+}` },
+      { title: "Saudação", code: `func saudacao(nome: String) -> String {
+    return "Olá, \\(nome)!"
+}
+
+print(saudacao(nome: "Caio"))
+print(saudacao(nome: "Ana"))` },
+      { title: "Inverter string", code: `func inverter(_ texto: String) -> String {
+    return String(texto.reversed())
+}
+
+print(inverter("CodeRacer"))` },
+      { title: "Dobro dos itens", code: `let numeros = [1, 2, 3, 4, 5]
+let dobrados = numeros.map { $0 * 2 }
+print(dobrados)
+let pares = numeros.filter { $0 % 2 == 0 }
+print(pares)` }
+    ],
+    medium: [
+      { title: "Struct com método", code: `struct Retangulo {
+    let largura: Double
+    let altura: Double
+
+    var area: Double {
+        return largura * altura
+    }
+
+    func cabe(em outro: Retangulo) -> Bool {
+        return largura <= outro.largura && altura <= outro.altura
+    }
+}
+
+let r = Retangulo(largura: 3, altura: 4)
+print(r.area)` },
+      { title: "Optional binding", code: `func parseIdade(_ texto: String) -> String {
+    if let idade = Int(texto), idade >= 0 {
+        return "Idade válida: \\(idade)"
+    } else {
+        return "Entrada inválida"
+    }
+}
+
+print(parseIdade("28"))
+print(parseIdade("abc"))` },
+      { title: "Reduce somatório", code: `let precos = [9.99, 4.50, 12.00, 3.25]
+let total = precos.reduce(0, +)
+let formatado = String(format: "%.2f", total)
+print("Total: R$ \\(formatado)")
+
+let acima = precos.filter { $0 > 5 }
+print("Itens caros: \\(acima.count)")` },
+      { title: "Extensão de Array", code: `extension Array where Element == Int {
+    func somaPares() -> Int {
+        return self.filter { $0 % 2 == 0 }
+                   .reduce(0, +)
+    }
+}
+
+let valores = [1, 2, 3, 4, 5, 6]
+print(valores.somaPares())` },
+      { title: "Dicionário de contagem", code: `func contarLetras(_ texto: String) -> [Character: Int] {
+    var contagem: [Character: Int] = [:]
+    for letra in texto where letra != " " {
+        contagem[letra, default: 0] += 1
+    }
+    return contagem
+}
+
+let resultado = contarLetras("banana")
+print(resultado)` }
+    ],
+    hard: [
+      { title: "Enum com associados", code: `enum Operacao {
+    case soma(Int, Int)
+    case subtracao(Int, Int)
+    case negacao(Int)
+
+    func calcular() -> Int {
+        switch self {
+        case let .soma(a, b):
+            return a + b
+        case let .subtracao(a, b):
+            return a - b
+        case let .negacao(a):
+            return -a
+        }
+    }
+}
+
+let ops: [Operacao] = [.soma(3, 4), .subtracao(10, 2), .negacao(5)]
+for op in ops {
+    print(op.calcular())
+}` },
+      { title: "Protocolo com extensão", code: `protocol Forma {
+    var area: Double { get }
+    var nome: String { get }
+}
+
+extension Forma {
+    func descricao() -> String {
+        return "\\(nome) com área \\(area)"
+    }
+}
+
+struct Circulo: Forma {
+    let raio: Double
+    var nome: String { "Círculo" }
+    var area: Double { Double.pi * raio * raio }
+}
+
+let c = Circulo(raio: 2.0)
+print(c.descricao())` },
+      { title: "Generics com restrição", code: `func maiorElemento<T: Comparable>(_ itens: [T]) -> T? {
+    guard var maximo = itens.first else {
+        return nil
+    }
+    for item in itens.dropFirst() {
+        if item > maximo {
+            maximo = item
+        }
+    }
+    return maximo
+}
+
+let numeros = [3, 9, 1, 7, 4]
+if let m = maiorElemento(numeros) {
+    print("Maior: \\(m)")
+}
+
+let palavras = ["pera", "uva", "maçã"]
+print(maiorElemento(palavras) ?? "vazio")` },
+      { title: "Closure async", code: `func buscarUsuario(id: Int, completar: @escaping (Result<String, Error>) -> Void) {
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+        if id > 0 {
+            completar(.success("Usuário \\(id)"))
+        } else {
+            completar(.failure(NSError(domain: "App", code: 400)))
+        }
+    }
+}
+
+buscarUsuario(id: 42) { resultado in
+    switch resultado {
+    case .success(let nome):
+        print(nome)
+    case .failure(let erro):
+        print("Erro: \\(erro)")
+    }
+}` },
+      { title: "Property wrapper", code: `@propertyWrapper
+struct Limitado {
+    private var valor: Int
+    private let minimo: Int
+    private let maximo: Int
+
+    init(wrappedValue: Int, _ minimo: Int, _ maximo: Int) {
+        self.minimo = minimo
+        self.maximo = maximo
+        self.valor = max(minimo, min(maximo, wrappedValue))
+    }
+
+    var wrappedValue: Int {
+        get { valor }
+        set { valor = max(minimo, min(maximo, newValue)) }
+    }
+}
+
+struct Configuracao {
+    @Limitado(0, 100) var volume: Int = 50
+}
+
+var config = Configuracao()
+config.volume = 150
+print(config.volume)` }
+    ]
+  },
 };
 
 function normalizeLang(l: string): string {

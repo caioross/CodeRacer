@@ -8,7 +8,13 @@ export type LangId =
   | "csharp"
   | "cpp"
   | "go"
-  | "rust";
+  | "rust"
+  | "sql"
+  | "bash"
+  | "ruby"
+  | "php"
+  | "kotlin"
+  | "swift";
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -27,7 +33,13 @@ export const LANGUAGES: LangMeta[] = [
   { id: "csharp", label: "C#", color: "#9b4f96", icon: "C#" },
   { id: "cpp", label: "C++", color: "#00599c", icon: "C++" },
   { id: "go", label: "Go", color: "#00add8", icon: "GO" },
-  { id: "rust", label: "Rust", color: "#dea584", icon: "RS" }
+  { id: "rust", label: "Rust", color: "#dea584", icon: "RS" },
+  { id: "sql", label: "SQL", color: "#e38c00", icon: "SQL" },
+  { id: "bash", label: "Bash", color: "#4eaa25", icon: "SH" },
+  { id: "ruby", label: "Ruby", color: "#cc342d", icon: "RB" },
+  { id: "php", label: "PHP", color: "#777bb4", icon: "PHP" },
+  { id: "kotlin", label: "Kotlin", color: "#7f52ff", icon: "KT" },
+  { id: "swift", label: "Swift", color: "#f05138", icon: "SW" }
 ];
 
 export const DIFFICULTIES: { id: Difficulty; label: string; desc: string }[] = [

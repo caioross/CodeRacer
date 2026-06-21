@@ -4,10 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, LogIn, Zap, Users, Trophy, Code2 } from "lucide-react";
+import { Plus, LogIn, Zap, Users, Trophy, Code2, Github } from "lucide-react";
+import { fadeUp, ease, dur } from "@/lib/motion";
 import { Logo } from "./Logo";
+import { AuroraBackground } from "./effects/AuroraBackground";
 import { MatrixRain } from "./MatrixRain";
+import { ClickSpark } from "./effects/ClickSpark";
+import { TypingDemo } from "./effects/TypingDemo";
 import { Modal } from "./ui/Modal";
+import { SpotlightCard } from "./ui/SpotlightCard";
+import { StarBorder } from "./ui/StarBorder";
 import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
 import { newPlayerId } from "@/lib/room";
@@ -111,7 +117,9 @@ export function HomeView() {
 
   return (
     <main className="relative min-h-screen overflow-hidden">
-      <MatrixRain opacity={0.06} />
+      <AuroraBackground />
+      <MatrixRain opacity={0.04} />
+      <ClickSpark />
 
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4">
@@ -166,9 +174,9 @@ export function HomeView() {
         </div>
       </header>
 
-      <section className="relative z-10 mx-auto max-w-5xl px-6 pt-10 md:pt-16">
+      <section className="relative z-10 mx-auto max-w-5xl px-6 pt-8 md:pt-14">
         {/* hero */}
-        <div className="text-center mb-12 md:mb-16">
+        <div className="text-center mb-10 md:mb-12">
           {/* Real, single H1 for SEO — visually replaced by the animated logo. */}
           <h1 className="sr-only">
             CodeRacer — corrida de digitação multiplayer para programadores. Digite código
@@ -177,15 +185,17 @@ export function HomeView() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: dur.slower, ease: ease.outExpo }}
             aria-hidden="true"
           >
-            <Logo size="xl" />
+            <div className="inline-block animate-cr-float">
+              <Logo size="xl" decrypt />
+            </div>
           </motion.div>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.25, duration: dur.slow, ease: ease.outExpo }}
             className="mt-6 text-text-muted text-base md:text-lg max-w-2xl mx-auto text-balance"
           >
             <span className="text-neon-green">// </span>
@@ -196,8 +206,8 @@ export function HomeView() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-            className="mt-5 inline-flex items-center gap-3 text-xs text-text-dim font-mono"
+            transition={{ delay: 0.4, duration: dur.slow, ease: ease.outExpo }}
+            className="mt-5 inline-flex flex-wrap items-center justify-center gap-3 text-xs text-text-dim font-mono"
           >
             <span className="chip border-neon-green/30 text-neon-green">
               <Zap className="size-3" /> tempo real
@@ -206,72 +216,82 @@ export function HomeView() {
               <Users className="size-3" /> multiplayer
             </span>
             <span className="chip border-neon-violet/30 text-neon-violet">
-              <Code2 className="size-3" /> 8 linguagens
+              <Code2 className="size-3" /> {LANGUAGES.length} linguagens
             </span>
           </motion.div>
         </div>
 
-        {/* main panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="card p-6 md:p-8 neon-border max-w-2xl mx-auto"
-        >
-          <div className="mb-5">
-            <label className="label" htmlFor="player_name">player_name</label>
-            <input
-              id="player_name"
-              className="input mt-1.5 text-base"
-              placeholder="Ex.: caio_dev"
-              aria-label="Seu nick de jogador"
-              maxLength={20}
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && setCreateOpen(true)}
-            />
-          </div>
+        {/* live demo + entry panel */}
+        <div className="grid md:grid-cols-2 gap-5 items-start max-w-4xl mx-auto">
+          <motion.div {...fadeUp(0.5)}>
+            <TypingDemo />
+          </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              onClick={() => setCreateOpen(true)}
-              disabled={loading}
-              className="btn-primary justify-center py-3 text-base"
-            >
-              <Plus className="size-4" />
-              Criar sala
-            </button>
+          <motion.div {...fadeUp(0.6)}>
+            <SpotlightCard className="card neon-border h-full p-6 md:p-7">
+              <div className="mb-4">
+                <label className="label" htmlFor="player_name">
+                  player_name
+                </label>
+                <input
+                  id="player_name"
+                  className="input mt-1.5 text-base"
+                  placeholder="Ex.: caio_dev"
+                  aria-label="Seu nick de jogador"
+                  maxLength={20}
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && setCreateOpen(true)}
+                />
+              </div>
 
-            <div className="flex gap-2">
-              <input
-                className="input uppercase tracking-[0.3em] text-center"
-                placeholder="CÓDIGO"
-                aria-label="Código de 6 letras da sala"
-                maxLength={6}
-                value={joinCode}
-                onChange={e =>
-                  setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
-                }
-                onKeyDown={e => e.key === "Enter" && handleJoin()}
-              />
-              <button
-                onClick={handleJoin}
+              <StarBorder
+                onClick={() => setCreateOpen(true)}
                 disabled={loading}
-                className="btn-secondary px-4"
-                aria-label="Entrar na sala com o código"
+                className="w-full"
+                innerClassName="py-3 text-base font-semibold text-neon-green glow-text-green"
               >
-                <LogIn className="size-4" />
-              </button>
-            </div>
-          </div>
-        </motion.div>
+                <Plus className="size-4" />
+                Criar sala
+              </StarBorder>
+
+              <div className="my-4 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-text-dim">
+                <span className="h-px flex-1 bg-bg-line" />
+                ou entre numa sala
+                <span className="h-px flex-1 bg-bg-line" />
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  className="input uppercase tracking-[0.3em] text-center"
+                  placeholder="CÓDIGO"
+                  aria-label="Código de 6 letras da sala"
+                  maxLength={6}
+                  value={joinCode}
+                  onChange={e =>
+                    setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
+                  }
+                  onKeyDown={e => e.key === "Enter" && handleJoin()}
+                />
+                <button
+                  onClick={handleJoin}
+                  disabled={loading}
+                  className="btn-secondary px-4"
+                  aria-label="Entrar na sala com o código"
+                >
+                  <LogIn className="size-4" />
+                </button>
+              </div>
+            </SpotlightCard>
+          </motion.div>
+        </div>
 
         {/* features strip */}
         <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <Feature
             icon={<Code2 className="size-4 text-neon-green" />}
             title="snippets reais"
-            text="Trechos de código de verdade, não 'O rato roeu...'. Cada partida sorteia um."
+            text={`${LANGUAGES.length} linguagens, 200+ trechos de código de verdade em 3 níveis. Cada partida sorteia um diferente.`}
           />
           <Feature
             icon={<Users className="size-4 text-neon-cyan" />}
@@ -285,8 +305,16 @@ export function HomeView() {
           />
         </div>
 
-        <footer className="mt-16 mb-6 text-center text-xs text-text-dim font-mono">
+        <footer className="mt-16 mb-6 flex flex-col items-center gap-2 text-center text-xs text-text-dim font-mono">
           <span className="terminal-prompt">made with caffeine ☕ &amp; segfaults</span>
+          <a
+            href="https://github.com/caioross"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-text-muted hover:text-neon-green transition-colors"
+          >
+            <Github className="size-3.5" /> github.com/caioross
+          </a>
         </footer>
       </section>
 
@@ -312,7 +340,7 @@ export function HomeView() {
         <div className="space-y-4">
           <div>
             <label className="label">linguagem</label>
-            <div className="mt-2 grid grid-cols-4 gap-1.5">
+            <div className="mt-2 grid grid-cols-4 sm:grid-cols-7 gap-1.5">
               {LANGUAGES.map(l => (
                 <button
                   key={l.id}
@@ -326,7 +354,7 @@ export function HomeView() {
                   title={l.label}
                 >
                   <div className="font-bold">{l.icon}</div>
-                  <div className="text-[10px] mt-0.5">{l.label}</div>
+                  <div className="text-[10px] mt-0.5 truncate">{l.label}</div>
                 </button>
               ))}
             </div>
@@ -397,12 +425,12 @@ function Feature({
   text: string;
 }) {
   return (
-    <div className="card p-4 hover:border-neon-green/30 transition-colors">
+    <SpotlightCard className="card p-4 transition-transform duration-200 hover:-translate-y-1">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="label">{title}</span>
       </div>
       <p className="text-text-muted text-xs leading-relaxed">{text}</p>
-    </div>
+    </SpotlightCard>
   );
 }
