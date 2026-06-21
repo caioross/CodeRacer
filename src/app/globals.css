@@ -175,3 +175,16 @@
     border-radius: 2px;
   }
 }
+
+/* Animated conic border used by StarBorder (CTA) */
+@keyframes cr-spin {
+  to { transform: rotate(1turn); }
+}
+.animate-cr-spin { animation: cr-spin 4s linear infinite; }
+
+/* Subtle idle float for hero elements */
+@keyframes cr-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-cr-float { animation: cr-float 6s ease-in-out infinite; }
