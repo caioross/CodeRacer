@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { charColors } from "@/lib/highlight";
 
 /**
- * Renders the snippet character-by-character.
- * - chars before `cursor` AND matching typed[] = .char-done
- * - chars before `cursor` that didn't match = .char-error
- * - char at `cursor` = .char-current
- * - chars after `cursor` = default
- *
- * `typed` is the string typed so far (same length as cursor in this implementation).
+ * Renders the target snippet with real syntax colors, modulated by typing state:
+ * - upcoming chars: full syntax color
+ * - typed-correct: same color, dimmed
+ * - typed-wrong: red error background
+ * - char at cursor: green highlight
  */
 export function CodeDisplay({
   code,
@@ -24,8 +23,8 @@ export function CodeDisplay({
   const cursor = typed.length;
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Build char tokens
   const chars = useMemo(() => code.split(""), [code]);
+  const colors = useMemo(() => charColors(code), [code]);
 
   // Keep current char in view
   useEffect(() => {
@@ -57,30 +56,35 @@ export function CodeDisplay({
 
       <div
         ref={containerRef}
-        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto max-h-[44vh] whitespace-pre"
+        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto overflow-x-hidden max-h-[44vh] whitespace-pre-wrap [overflow-wrap:anywhere]"
       >
         {chars.map((ch, i) => {
-          let cls = "text-text-muted";
-          if (i < cursor) {
-            cls = typed[i] === ch ? "char-done" : "char-error";
-          } else if (i === cursor) {
-            cls = "char-current";
+          const isCurrent = i === cursor;
+          const done = i < cursor;
+          const isError = done && typed[i] !== ch;
+
+          let className = "";
+          const style: React.CSSProperties = {};
+          if (isError) {
+            className = "char-error";
+          } else if (isCurrent) {
+            className = "char-current";
           } else {
-            cls = "text-text-muted";
+            style.color = colors[i];
+            if (done) style.opacity = 0.4;
           }
-          const display = ch === "\n" ? "\n" : ch;
+
           return (
-            <span key={i} data-i={i} className={cn(cls)}>
+            <span key={i} data-i={i} className={cn(className)} style={style}>
               {ch === "\n" ? (
                 <>
-                  {/* show ¬ on current newline, otherwise nothing extra */}
-                  {i === cursor && (
+                  {isCurrent && (
                     <span className="text-neon-green/60 char-current px-0.5">⏎</span>
                   )}
                   {"\n"}
                 </>
               ) : (
-                display
+                ch
               )}
             </span>
           );

@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Flag, Target, Timer, Zap } from "lucide-react";
+import { Target, Timer, Zap } from "lucide-react";
 import type { RoomState } from "@/lib/types";
 import { RaceTrack } from "./RaceTrack";
 import { CodeDisplay } from "./CodeDisplay";
-import { Chat } from "./Chat";
+import { CodeEditor } from "./CodeEditor";
+import { FloatingChat } from "./FloatingChat";
 
 export function Race({
   room,
@@ -25,28 +26,25 @@ export function Race({
   const code = snippet.code;
   const startedAt = room.startedAt!;
   const me = room.players.find(p => p.id === meId);
-  const iFinished = !!me?.finishedAt;
+  const myFinishedAt = me?.finishedAt ?? null;
+  const iFinished = !!myFinishedAt;
 
   const [typed, setTyped] = useState("");
   const [errors, setErrors] = useState(0);
   const [totalKeystrokes, setTotalKeystrokes] = useState(0);
   const [now, setNow] = useState<number>(Date.now());
 
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  // Tick clock
+  // Tick clock — stops once we finish so the timer and WPM freeze in place.
   useEffect(() => {
+    if (iFinished) return;
     const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
-  }, []);
+  }, [iFinished]);
 
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Compute metrics
-  const elapsedMs = Math.max(0, now - startedAt);
+  // Compute metrics — once we finish, freeze the clock at our finish time so
+  // WPM (correctChars / elapsedMin) stops decaying while we wait for others.
+  const clockNow = myFinishedAt ?? now;
+  const elapsedMs = Math.max(0, clockNow - startedAt);
   const elapsedMin = elapsedMs / 60000;
   const correctChars = useMemo(() => {
     let c = 0;
@@ -103,47 +101,22 @@ export function Race({
   }, []);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
-      <div className="space-y-4">
-        {/* track */}
-        <RaceTrack players={room.players} meId={meId} />
+    <div className="space-y-4 max-w-5xl mx-auto">
+      {/* track */}
+      <RaceTrack players={room.players} meId={meId} />
 
         {/* code + input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <CodeDisplay code={code} typed={typed} language={snippet.language} />
 
-          <div className="card flex flex-col">
-            <div className="flex items-center justify-between border-b border-bg-line px-3 py-2 text-xs font-mono">
-              <span className="text-text-muted">
-                // {iFinished ? "você terminou!" : "digite o código aqui"}
-              </span>
-              <span className="text-text-dim">{typed.length} chars</span>
-            </div>
-            <textarea
-              ref={inputRef}
-              value={typed}
-              onChange={e => handleInput(e.target.value)}
-              onPaste={noPaste}
-              spellCheck={false}
-              autoCorrect="off"
-              autoComplete="off"
-              autoCapitalize="off"
-              disabled={iFinished}
-              className="flex-1 min-h-[44vh] resize-none bg-transparent p-4 font-mono text-sm leading-7
-                         text-text outline-none disabled:opacity-50 whitespace-pre"
-              placeholder={iFinished ? "✅ terminou! veja a posição dos outros..." : "$ comece a digitar..."}
-            />
-            <div className="border-t border-bg-line p-2 flex items-center justify-between text-xs">
-              <span className="text-text-dim">
-                ⓘ paste desabilitado · backspace ok mas não conta como acerto
-              </span>
-              {!iFinished && (
-                <button onClick={onAbandon} className="btn-danger text-xs px-2 py-1">
-                  <Flag className="size-3" /> desistir
-                </button>
-              )}
-            </div>
-          </div>
+          <CodeEditor
+            value={typed}
+            onChange={handleInput}
+            onPaste={noPaste}
+            disabled={iFinished}
+            language={snippet.language}
+            onAbandon={iFinished ? undefined : onAbandon}
+          />
         </div>
 
         {/* personal stats */}
@@ -188,19 +161,14 @@ export function Race({
             />
           </div>
         </div>
-      </div>
 
-      <aside className="lg:max-h-[calc(100vh-100px)] flex">
-        <div className="flex-1 min-h-[400px]">
-          <Chat
-            messages={room.chat}
-            players={room.players}
-            meId={meId}
-            onSend={onChat}
-          />
-        </div>
-      </aside>
-    </div>
+        <FloatingChat
+          messages={room.chat}
+          players={room.players}
+          meId={meId}
+          onSend={onChat}
+        />
+      </div>
   );
 }
 

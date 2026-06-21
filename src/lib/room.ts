@@ -48,6 +48,8 @@ export interface ProgressMsg {
   accuracy: number;
   errors: number;
   finishedAt: number | null;
+  /** true when the player gave up (abandon) — finishedAt is set but they didn't complete. */
+  abandoned?: boolean;
 }
 
 /** Presence payload tracked per connected player. */
@@ -57,6 +59,7 @@ export interface PresenceMeta {
   color: string;
   joinedAt: number;
   avatar?: string | null;
+  ready?: boolean;
 }
 
 export interface ChatMsg {
@@ -80,6 +83,8 @@ export interface LivePlayer {
   errors: number;
   finishedAt: number | null;
   place: number | null;
+  ready: boolean;
+  abandoned: boolean;
 }
 
 export const COUNTDOWN_MS = 4000;

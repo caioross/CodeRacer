@@ -98,6 +98,8 @@ export function RoomView({ roomCode }: { roomCode: string }) {
             onUpdateSettings={actions.updateSettings}
             onStart={actions.startRace}
             onChat={actions.sendChat}
+            onSetReady={actions.setReady}
+            onKick={actions.kick}
           />
         )}
 
@@ -143,7 +145,8 @@ function liveToPlayer(p: LivePlayer): Player {
     errors: p.errors,
     finishedAt: p.finishedAt,
     place: p.place,
-    ready: true
+    ready: p.ready,
+    abandoned: p.abandoned
   };
 }
 
@@ -158,7 +161,8 @@ function resultToPlayer(r: ResultRow): Player {
     errors: r.errors,
     finishedAt: r.finishedAt,
     place: r.place,
-    ready: true
+    ready: true,
+    abandoned: false
   };
 }
 
