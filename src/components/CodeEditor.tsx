@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Flag, Minus, Plus, Settings2, WrapText } from "lucide-react";
+import { Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
+import { tokColor, tokenize } from "@/lib/highlight";
+import { isMuted, playKey, setMuted } from "@/lib/sound";
 
-// VSCode-like typing surface: line-number gutter, active-line highlight,
-// status bar (Ln/Col), and an options menu (font size + word wrap).
-// Anti-cheat (paste blocked, disabled when finished) is preserved.
+// VSCode-like typing surface with live syntax highlighting: a transparent
+// textarea sits over a colored <pre> mirror (perfectly aligned metrics).
+// Plus line-number gutter, active-line highlight, status bar, keyboard sound
+// (toggleable), and an options menu (font size + word wrap). Anti-cheat kept.
 const MIN_FONT = 12;
 const MAX_FONT = 20;
 
@@ -26,21 +29,34 @@ export function CodeEditor({
   onAbandon?: () => void;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const preRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const [fontSize, setFontSize] = useState(15);
   const [wrap, setWrap] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
   const [caret, setCaret] = useState({ line: 1, col: 1 });
   const [scrollTop, setScrollTop] = useState(0);
 
   const lineHeight = Math.round(fontSize * 1.7);
   const lineCount = useMemo(() => Math.max(value.split("\n").length, 1), [value]);
+  const tokens = useMemo(() => tokenize(value), [value]);
   const lang = langById(language);
   const showGutter = !wrap;
 
   useEffect(() => {
     taRef.current?.focus();
+    setSoundOn(!isMuted());
   }, []);
+
+  const sharedStyle: React.CSSProperties = {
+    fontSize,
+    lineHeight: `${lineHeight}px`,
+    fontFamily: "var(--font-jetbrains), ui-monospace, monospace",
+    whiteSpace: wrap ? "pre-wrap" : "pre",
+    overflowWrap: wrap ? "anywhere" : "normal",
+    tabSize: 2
+  };
 
   function syncCaret() {
     const ta = taRef.current;
@@ -52,16 +68,27 @@ export function CodeEditor({
   }
 
   function onScroll(e: React.UIEvent<HTMLTextAreaElement>) {
-    const st = e.currentTarget.scrollTop;
+    const { scrollTop: st, scrollLeft: sl } = e.currentTarget;
     setScrollTop(st);
+    if (preRef.current) {
+      preRef.current.scrollTop = st;
+      preRef.current.scrollLeft = sl;
+    }
     if (gutterRef.current) gutterRef.current.scrollTop = st;
+  }
+
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    setMuted(!next);
+    if (next) playKey();
   }
 
   const activeLineTop = 16 + (caret.line - 1) * lineHeight - scrollTop;
 
   return (
     <div className="card flex flex-col overflow-hidden">
-      {/* header / title bar */}
+      {/* title bar */}
       <div className="flex items-center justify-between border-b border-bg-line px-3 py-2 text-xs font-mono">
         <div className="flex items-center gap-2">
           <span className="flex gap-1">
@@ -79,6 +106,14 @@ export function CodeEditor({
               {lang.icon}
             </span>
           )}
+          <button
+            onClick={toggleSound}
+            className="grid size-5 place-items-center text-text-muted hover:text-text"
+            aria-label={soundOn ? "Desligar som" : "Ligar som"}
+            title={soundOn ? "Som: ligado" : "Som: desligado"}
+          >
+            {soundOn ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+          </button>
           <div className="relative">
             <button
               onClick={() => setOptionsOpen(o => !o)}
@@ -135,7 +170,7 @@ export function CodeEditor({
         </div>
       </div>
 
-      {/* editor body: gutter + active line + textarea */}
+      {/* editor body: gutter + highlighted overlay + transparent textarea */}
       <div className="relative flex min-h-[44vh] flex-1 overflow-hidden">
         {showGutter && (
           <div
@@ -156,40 +191,54 @@ export function CodeEditor({
           </div>
         )}
 
-        {showGutter && !disabled && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute left-[52px] right-0 bg-neon-green/[0.05]"
-            style={{ top: activeLineTop, height: lineHeight }}
-          />
-        )}
+        <div className="relative flex-1 overflow-hidden">
+          {showGutter && !disabled && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bg-neon-green/[0.05]"
+              style={{ top: activeLineTop, height: lineHeight }}
+            />
+          )}
 
-        <textarea
-          ref={taRef}
-          value={value}
-          onChange={e => {
-            onChange(e.target.value);
-            syncCaret();
-          }}
-          onPaste={onPaste}
-          onScroll={onScroll}
-          onKeyUp={syncCaret}
-          onClick={syncCaret}
-          spellCheck={false}
-          autoCorrect="off"
-          autoComplete="off"
-          autoCapitalize="off"
-          disabled={disabled}
-          wrap={wrap ? "soft" : "off"}
-          className="flex-1 resize-none bg-transparent px-4 py-4 font-mono text-text outline-none disabled:opacity-50"
-          style={{
-            fontSize,
-            lineHeight: `${lineHeight}px`,
-            whiteSpace: wrap ? "pre-wrap" : "pre",
-            overflowWrap: wrap ? "anywhere" : "normal"
-          }}
-          placeholder={disabled ? "✅ terminou! veja a posição dos outros..." : "$ comece a digitar..."}
-        />
+          {/* colored mirror */}
+          <pre
+            ref={preRef}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 m-0 overflow-hidden px-4 py-4"
+            style={sharedStyle}
+          >
+            {tokens.map((t, i) => (
+              <span key={i} style={{ color: tokColor(t.type) }}>
+                {t.text}
+              </span>
+            ))}
+            {"\n"}
+          </pre>
+
+          {/* transparent input on top */}
+          <textarea
+            ref={taRef}
+            value={value}
+            onChange={e => {
+              if (e.target.value.length > value.length) playKey();
+              onChange(e.target.value);
+              syncCaret();
+            }}
+            onPaste={onPaste}
+            onScroll={onScroll}
+            onKeyUp={syncCaret}
+            onClick={syncCaret}
+            spellCheck={false}
+            autoCorrect="off"
+            autoComplete="off"
+            autoCapitalize="off"
+            disabled={disabled}
+            wrap={wrap ? "soft" : "off"}
+            className="absolute inset-0 resize-none bg-transparent px-4 py-4 text-transparent caret-neon-green outline-none placeholder:text-text-dim disabled:opacity-50"
+            style={{ ...sharedStyle, caretColor: "#00ff88", color: "transparent" }}
+            placeholder={disabled ? "✅ terminou! veja a posição dos outros..." : "$ comece a digitar..."}
+          />
+        </div>
       </div>
 
       {/* status bar */}

@@ -7,7 +7,7 @@ import type { RoomState } from "@/lib/types";
 import { RaceTrack } from "./RaceTrack";
 import { CodeDisplay } from "./CodeDisplay";
 import { CodeEditor } from "./CodeEditor";
-import { Chat } from "./Chat";
+import { FloatingChat } from "./FloatingChat";
 
 export function Race({
   room,
@@ -101,10 +101,9 @@ export function Race({
   }, []);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
-      <div className="space-y-4">
-        {/* track */}
-        <RaceTrack players={room.players} meId={meId} />
+    <div className="space-y-4 max-w-5xl mx-auto">
+      {/* track */}
+      <RaceTrack players={room.players} meId={meId} />
 
         {/* code + input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -162,19 +161,14 @@ export function Race({
             />
           </div>
         </div>
-      </div>
 
-      <aside className="lg:max-h-[calc(100vh-100px)] flex">
-        <div className="flex-1 min-h-[400px]">
-          <Chat
-            messages={room.chat}
-            players={room.players}
-            meId={meId}
-            onSend={onChat}
-          />
-        </div>
-      </aside>
-    </div>
+        <FloatingChat
+          messages={room.chat}
+          players={room.players}
+          meId={meId}
+          onSend={onChat}
+        />
+      </div>
   );
 }
 
