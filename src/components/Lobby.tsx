@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Crown, Play, Settings as SettingsIcon, Share2, Users } from "lucide-react";
+import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X } from "lucide-react";
 import type { RoomState } from "@/lib/types";
 import { LANGUAGES, DIFFICULTIES, type Difficulty, type LangId } from "@/lib/languages";
 import { Chat } from "./Chat";
@@ -14,7 +14,9 @@ export function Lobby({
   isLeader,
   onUpdateSettings,
   onStart,
-  onChat
+  onChat,
+  onSetReady,
+  onKick
 }: {
   room: RoomState;
   meId: string;
@@ -22,8 +24,17 @@ export function Lobby({
   onUpdateSettings: (s: Partial<RoomState["settings"]>) => void;
   onStart: () => void;
   onChat: (text: string) => void;
+  onSetReady: (ready: boolean) => void;
+  onKick: (id: string) => void;
 }) {
   const toast = useToast();
+
+  const me = room.players.find(p => p.id === meId);
+  const myReady = !!me?.ready;
+  // Everyone except the leader must be ready before the leader can start.
+  const others = room.players.filter(p => p.id !== room.leaderId);
+  const readyCount = others.filter(p => p.ready).length;
+  const allReady = others.length === 0 || others.every(p => p.ready);
 
   function copyLink() {
     const link = `${window.location.origin}/room/${room.code}`;
@@ -54,17 +65,38 @@ export function Lobby({
                 {isLeader ? (
                   <>
                     Você é o <span className="text-neon-amber">líder</span>. Configure
-                    a partida e clique em iniciar quando estiver pronto.
+                    a partida — você só inicia quando todos marcarem{" "}
+                    <span className="text-neon-green">pronto</span>.
                   </>
                 ) : (
-                  <>Aguardando o líder iniciar a partida...</>
+                  <>
+                    Marque que você está <span className="text-neon-green">pronto</span> — o
+                    líder começa quando todos estiverem.
+                  </>
                 )}
               </p>
             </div>
-            <button onClick={copyLink} className="btn-secondary">
-              <Share2 className="size-4" />
-              Compartilhar
-            </button>
+            <div className="flex items-center gap-2">
+              {!isLeader && (
+                <button
+                  onClick={() => onSetReady(!myReady)}
+                  className={myReady ? "btn-primary" : "btn-secondary"}
+                  aria-pressed={myReady}
+                >
+                  {myReady ? (
+                    <>
+                      <Check className="size-4" /> pronto
+                    </>
+                  ) : (
+                    "marcar como pronto"
+                  )}
+                </button>
+              )}
+              <button onClick={copyLink} className="btn-secondary">
+                <Share2 className="size-4" />
+                Compartilhar
+              </button>
+            </div>
           </div>
         </motion.div>
 
@@ -160,14 +192,24 @@ export function Lobby({
           </div>
 
           {isLeader && (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={onStart}
-              className="btn-primary w-full mt-6 py-3 text-base"
-            >
-              <Play className="size-4" /> Iniciar partida
-            </motion.button>
+            <div className="mt-6">
+              <motion.button
+                whileHover={allReady ? { scale: 1.01 } : undefined}
+                whileTap={allReady ? { scale: 0.99 } : undefined}
+                onClick={onStart}
+                disabled={!allReady}
+                className="btn-primary w-full py-3 text-base disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Play className="size-4" /> Iniciar partida
+              </motion.button>
+              <p className="mt-2 text-center text-[11px] font-mono text-text-dim">
+                {others.length === 0
+                  ? "// sem outros jogadores — inicie quando quiser"
+                  : allReady
+                  ? "// todos prontos! manda ver 🚀"
+                  : `// prontos: ${readyCount}/${others.length} — aguardando todos marcarem pronto`}
+              </p>
+            </div>
           )}
         </motion.div>
 
@@ -187,9 +229,19 @@ export function Lobby({
                 key={p.id}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="card p-3 flex items-center gap-2"
+                className="card p-3 flex items-center gap-2 relative group"
                 style={{ borderColor: `${p.color}40` }}
               >
+                {isLeader && p.id !== meId && p.id !== room.leaderId && (
+                  <button
+                    onClick={() => onKick(p.id)}
+                    title={`Remover ${p.name} da sala`}
+                    aria-label={`Remover ${p.name} da sala`}
+                    className="absolute -top-2 -right-2 z-10 grid size-5 place-items-center rounded-full border border-neon-red/40 bg-bg-card text-neon-red opacity-0 transition hover:bg-neon-red/15 group-hover:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
                 {p.avatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -216,11 +268,17 @@ export function Lobby({
                     {p.name}
                     {p.id === meId && <span className="text-text-dim ml-1 text-xs">(você)</span>}
                   </div>
-                  <div className="text-[10px] text-text-dim flex items-center gap-1">
-                    {p.id === room.leaderId && (
-                      <>
-                        <Crown className="size-2.5 text-neon-amber" /> líder
-                      </>
+                  <div className="text-[10px] flex items-center gap-1">
+                    {p.id === room.leaderId ? (
+                      <span className="inline-flex items-center gap-1 text-neon-amber">
+                        <Crown className="size-2.5" /> líder
+                      </span>
+                    ) : p.ready ? (
+                      <span className="inline-flex items-center gap-1 text-neon-green">
+                        <Check className="size-2.5" /> pronto
+                      </span>
+                    ) : (
+                      <span className="text-text-dim">aguardando...</span>
                     )}
                   </div>
                 </div>

@@ -57,7 +57,7 @@ export function CodeDisplay({
 
       <div
         ref={containerRef}
-        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto max-h-[44vh] whitespace-pre"
+        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto overflow-x-hidden max-h-[44vh] whitespace-pre-wrap [overflow-wrap:anywhere]"
       >
         {chars.map((ch, i) => {
           let cls = "text-text-muted";

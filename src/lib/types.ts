@@ -12,6 +12,7 @@ export interface Player {
   finishedAt: number | null;
   place: number | null;
   ready: boolean;
+  abandoned: boolean;
 }
 
 export interface ChatMessage {

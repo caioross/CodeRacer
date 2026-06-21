@@ -42,6 +42,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const connectedRef = useRef(false);
   const meIdRef = useRef<string | null>(null);
   const myFinishRef = useRef<number | null>(null);
+  const myAbandonRef = useRef(false);
+  const myMetaRef = useRef<PresenceMeta | null>(null);
   const finishPostedRef = useRef(false);
   const claimingRef = useRef(false);
   const lastSentRef = useRef(0);
@@ -172,6 +174,18 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setChat(prev => [...prev.slice(-80), m]);
       });
 
+      // Leader kicked someone — if it's me, leave the room.
+      channel.on("broadcast", { event: "kick" }, ({ payload }) => {
+        const targetId = (payload as { id?: string })?.id;
+        if (targetId && targetId === id) {
+          try {
+            sessionStorage.removeItem(SESSION_KEY(code));
+          } catch {}
+          fail("Você foi removido da sala pelo líder");
+          onLeaveRef.current?.();
+        }
+      });
+
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
@@ -184,7 +198,9 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       channel.subscribe(status => {
         if (cancelled) return;
         if (status === "SUBSCRIBED") {
-          channel.track({ id, name, color, avatar, joinedAt: Date.now() } as PresenceMeta);
+          const meta: PresenceMeta = { id, name, color, avatar, joinedAt: Date.now(), ready: false };
+          myMetaRef.current = meta;
+          channel.track(meta);
           setPhase("ready");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           fail("Conexão em tempo real falhou");
@@ -215,16 +231,28 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       lastStartRef.current = sa;
       if (room?.status === "racing") {
         myFinishRef.current = null;
+        myAbandonRef.current = false;
         finishPostedRef.current = false;
         setProgress({});
       }
     }
     if (room?.status === "lobby") {
       myFinishRef.current = null;
+      myAbandonRef.current = false;
       finishPostedRef.current = false;
       setProgress({});
     }
   }, [room?.start_at, room?.status]);
+
+  // Clear my "ready" flag once the room leaves the lobby, so the next lobby
+  // (after a reset) starts with everyone unready again.
+  useEffect(() => {
+    if (room?.status && room.status !== "lobby" && myMetaRef.current?.ready) {
+      const meta: PresenceMeta = { ...myMetaRef.current, ready: false };
+      myMetaRef.current = meta;
+      channelRef.current?.track(meta);
+    }
+  }, [room?.status]);
 
   // Tick a clock only while a countdown is pending.
   const startMs = room?.start_at ? Date.parse(room.start_at) : 0;
@@ -249,11 +277,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         accuracy: pr?.accuracy ?? 100,
         errors: pr?.errors ?? 0,
         finishedAt: pr?.finishedAt ?? null,
-        place: null
+        place: null,
+        ready: meta.ready ?? false,
+        abandoned: pr?.abandoned ?? false
       };
     });
+    // Only players who actually completed get a place — abandons don't rank.
     const finishers = list
-      .filter(p => p.finishedAt)
+      .filter(p => p.finishedAt && !p.abandoned)
       .sort((a, b) => (a.finishedAt as number) - (b.finishedAt as number));
     finishers.forEach((p, i) => (p.place = i + 1));
     return list;
@@ -267,7 +298,10 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
 
   const toResults = useCallback(
     (list: LivePlayer[]): ResultRow[] =>
-      list.map(p => ({
+      // Abandoners don't count for anything — keep only players who completed.
+      list
+        .filter(p => p.finishedAt && !p.abandoned)
+        .map(p => ({
         id: p.id,
         name: p.name,
         color: p.color,
@@ -322,6 +356,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       const id = meIdRef.current;
       const ch = channelRef.current;
       if (!id) return;
+      if (finishing) myAbandonRef.current = true;
       if (finishing && myFinishRef.current == null) myFinishRef.current = Date.now();
       if (p >= 1 && myFinishRef.current == null) myFinishRef.current = Date.now();
       const msg: ProgressMsg = {
@@ -330,7 +365,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         wpm: Math.round(wpm) || 0,
         accuracy: Math.round(accuracy),
         errors: Math.round(errors) || 0,
-        finishedAt: myFinishRef.current
+        finishedAt: myFinishRef.current,
+        abandoned: myAbandonRef.current
       };
       // Optimistically update my own row.
       setProgress(prev => ({ ...prev, [id]: msg }));
@@ -371,6 +407,23 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     ch.send({ type: "broadcast", event: "chat", payload: msg });
   }, [presence]);
 
+  // Toggle my "ready" state by re-tracking presence (syncs to everyone, incl. late joiners).
+  const setReady = useCallback((ready: boolean) => {
+    const ch = channelRef.current;
+    const base = myMetaRef.current;
+    if (!ch || !base) return;
+    const meta: PresenceMeta = { ...base, ready };
+    myMetaRef.current = meta;
+    ch.track(meta);
+  }, []);
+
+  // Leader removes a player: broadcast a kick the target obeys by leaving.
+  const kick = useCallback((targetId: string) => {
+    const ch = channelRef.current;
+    if (!ch || !targetId) return;
+    ch.send({ type: "broadcast", event: "kick", payload: { id: targetId } });
+  }, []);
+
   const updateSettings = useCallback(
     (settings: Record<string, unknown>) => postAction("settings", { settings }),
     [postAction]
@@ -387,6 +440,15 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     chat,
     countdownN,
     join,
-    actions: { updateSettings, startRace, resetToLobby, sendProgress, abandon, sendChat }
+    actions: {
+      updateSettings,
+      startRace,
+      resetToLobby,
+      sendProgress,
+      abandon,
+      sendChat,
+      setReady,
+      kick
+    }
   };
 }
