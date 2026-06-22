@@ -8,7 +8,29 @@ export const dynamic = "force-dynamic";
 // Friendly room codes — uppercase, no confusing chars.
 const newRoomCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
 
-// POST /api/rooms → create a room. Body: { name, settings, playerId }
+// GET /api/rooms → list open public rooms for the home browser.
+export async function GET() {
+  const sb = getServerSupabase();
+  if (!sb) {
+    return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 500 });
+  }
+  // Only fresh (last 3h), still-in-lobby public rooms are joinable/discoverable.
+  const since = new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString();
+  const { data, error } = await sb
+    .from("rooms")
+    .select("code, language, difficulty, max_players, created_at")
+    .eq("is_public", true)
+    .eq("status", "lobby")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(24);
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, rooms: data ?? [] });
+}
+
+// POST /api/rooms → create a room. Body: { name, settings, playerId, isPublic }
 export async function POST(req: Request) {
   const sb = getServerSupabase();
   if (!sb) {
@@ -35,7 +57,8 @@ export async function POST(req: Request) {
         leader_id: playerId,
         language: settings.language || "javascript",
         difficulty: settings.difficulty || "medium",
-        max_players: maxPlayers
+        max_players: maxPlayers,
+        is_public: !!body?.isPublic
       })
       .select("*")
       .single();

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, LogIn, Zap, Users, Trophy, Code2, Github } from "lucide-react";
+import { Plus, LogIn, Zap, Users, Trophy, Code2, Github, Globe, Lock, RefreshCw } from "lucide-react";
 import { fadeUp, ease, dur } from "@/lib/motion";
 import { Logo } from "./Logo";
 import { AuroraBackground } from "./effects/AuroraBackground";
@@ -15,11 +15,27 @@ import { Modal } from "./ui/Modal";
 import { SpotlightCard } from "./ui/SpotlightCard";
 import { StarBorder } from "./ui/StarBorder";
 import { useToast } from "./ui/Toast";
-import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
+import { LANGUAGES, DIFFICULTIES, langById, type LangId, type Difficulty } from "@/lib/languages";
 import { newPlayerId } from "@/lib/room";
 import { useAuth } from "@/lib/useAuth";
 
 const PERSIST_NAME_KEY = "coderacer:name";
+
+type PublicRoom = {
+  code: string;
+  language: string;
+  difficulty: string;
+  max_players: number;
+  created_at: string;
+};
+
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "agora";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h`;
+}
 
 export function HomeView() {
   const router = useRouter();
@@ -32,7 +48,10 @@ export function HomeView() {
   const [language, setLanguage] = useState<LangId>("javascript");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [maxPlayers, setMaxPlayers] = useState(6);
+  const [isPublic, setIsPublic] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
 
   // Persist player name locally so they don't have to retype
   useEffect(() => {
@@ -44,6 +63,23 @@ export function HomeView() {
   useEffect(() => {
     if (auth.user?.name) setName(auth.user.name);
   }, [auth.user]);
+
+  // Load the public-rooms browser (and let the refresh button re-run it).
+  const loadPublicRooms = useCallback(async () => {
+    setRoomsLoading(true);
+    try {
+      const res = await fetch("/api/rooms", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setPublicRooms(json?.ok ? (json.rooms as PublicRoom[]) : []);
+    } catch {
+      setPublicRooms([]);
+    }
+    setRoomsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadPublicRooms();
+  }, [loadPublicRooms]);
 
   function persistAndGo(playerId: string, code: string) {
     const nm = name.trim() || "anon";
@@ -68,7 +104,8 @@ export function HomeView() {
         body: JSON.stringify({
           name: name.trim(),
           settings: { language, difficulty, maxPlayers },
-          playerId
+          playerId,
+          isPublic
         })
       });
       const json = await res.json().catch(() => ({}));
@@ -85,17 +122,17 @@ export function HomeView() {
     }
   }
 
-  async function handleJoin() {
+  async function joinByCode(rawCode: string) {
     if (!name.trim()) {
       toast.push({ kind: "error", text: "Coloca um nome aí, fera" });
       return;
     }
-    if (!joinCode.trim()) {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) {
       toast.push({ kind: "error", text: "Cola o código da sala" });
       return;
     }
     setLoading(true);
-    const code = joinCode.trim().toUpperCase();
     try {
       const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
@@ -114,6 +151,8 @@ export function HomeView() {
       toast.push({ kind: "error", text: "Sem conexão com o servidor" });
     }
   }
+
+  const handleJoin = () => joinByCode(joinCode);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -286,6 +325,14 @@ export function HomeView() {
           </motion.div>
         </div>
 
+        {/* public rooms browser */}
+        <PublicRooms
+          rooms={publicRooms}
+          loading={roomsLoading}
+          onRefresh={loadPublicRooms}
+          onEnter={joinByCode}
+        />
+
         {/* features strip */}
         <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <Feature
@@ -398,6 +445,44 @@ export function HomeView() {
               <span>12</span>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsPublic(v => !v)}
+            className="flex w-full items-center justify-between rounded-md border border-bg-line px-3 py-2.5 text-left transition-colors hover:border-text-dim"
+            aria-pressed={isPublic}
+          >
+            <span className="flex items-center gap-2">
+              {isPublic ? (
+                <Globe className="size-4 text-neon-green" />
+              ) : (
+                <Lock className="size-4 text-text-muted" />
+              )}
+              <span>
+                <span className="block text-sm font-medium text-text">
+                  {isPublic ? "sala pública" : "sala privada"}
+                </span>
+                <span className="block text-[10px] text-text-dim normal-case">
+                  {isPublic
+                    ? "aparece na busca de salas da home"
+                    : "só entra quem tem o código ou link"}
+                </span>
+              </span>
+            </span>
+            <span
+              className={
+                "relative h-5 w-9 shrink-0 rounded-full transition-colors " +
+                (isPublic ? "bg-neon-green/30" : "bg-bg-line")
+              }
+            >
+              <span
+                className={
+                  "absolute top-0.5 size-4 rounded-full transition-all " +
+                  (isPublic ? "left-[18px] bg-neon-green" : "left-0.5 bg-text-muted")
+                }
+              />
+            </span>
+          </button>
         </div>
       </Modal>
     </main>
@@ -432,5 +517,91 @@ function Feature({
       </div>
       <p className="text-text-muted text-xs leading-relaxed">{text}</p>
     </SpotlightCard>
+  );
+}
+
+function PublicRooms({
+  rooms,
+  loading,
+  onRefresh,
+  onEnter
+}: {
+  rooms: PublicRoom[];
+  loading: boolean;
+  onRefresh: () => void;
+  onEnter: (code: string) => void;
+}) {
+  return (
+    <div className="mt-12 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Globe className="size-4 text-neon-green" />
+          <span className="label">salas públicas abertas</span>
+          {rooms.length > 0 && (
+            <span className="text-[10px] text-text-dim">({rooms.length})</span>
+          )}
+        </div>
+        <button
+          onClick={onRefresh}
+          className="btn-ghost text-xs px-2 py-1"
+          aria-label="Atualizar lista de salas"
+        >
+          <RefreshCw className={"size-3.5 " + (loading ? "animate-spin" : "")} /> atualizar
+        </button>
+      </div>
+
+      {loading && rooms.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[0, 1].map(i => (
+            <div key={i} className="card h-[68px] shimmer" />
+          ))}
+        </div>
+      ) : rooms.length === 0 ? (
+        <div className="card p-6 text-center text-sm text-text-muted">
+          nenhuma sala pública aberta agora —{" "}
+          <span className="text-neon-green">crie a primeira!</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {rooms.map(r => {
+            const lang = langById(r.language);
+            return (
+              <div
+                key={r.code}
+                className="card p-3 flex items-center gap-3 hover:border-neon-green/30 transition-colors"
+              >
+                <div
+                  className="grid size-9 shrink-0 place-items-center rounded-md text-[11px] font-bold"
+                  style={{
+                    background: `${lang?.color ?? "#7d8590"}20`,
+                    color: lang?.color ?? "#7d8590"
+                  }}
+                >
+                  {lang?.icon ?? r.language.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-text truncate">
+                    {lang?.label ?? r.language}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-text-dim font-mono">
+                    <span>{r.difficulty}</span>
+                    <span>·</span>
+                    <span>até {r.max_players}p</span>
+                    <span>·</span>
+                    <span>{timeAgo(r.created_at)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => onEnter(r.code)}
+                  className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
+                >
+                  <LogIn className="size-3.5" /> entrar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

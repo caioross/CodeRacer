@@ -115,6 +115,7 @@ export function Race({
             onPaste={noPaste}
             disabled={iFinished}
             language={snippet.language}
+            target={code}
             onAbandon={iFinished ? undefined : onAbandon}
           />
         </div>

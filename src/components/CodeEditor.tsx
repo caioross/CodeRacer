@@ -19,6 +19,7 @@ export function CodeEditor({
   onPaste,
   disabled,
   language,
+  target,
   onAbandon
 }: {
   value: string;
@@ -26,11 +27,14 @@ export function CodeEditor({
   onPaste: (e: React.ClipboardEvent) => void;
   disabled: boolean;
   language: string;
+  /** The snippet being typed — used so Tab inserts the right indentation. */
+  target: string;
   onAbandon?: () => void;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
+  const pendingCaret = useRef<number | null>(null);
   const [fontSize, setFontSize] = useState(15);
   const [wrap, setWrap] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -48,6 +52,17 @@ export function CodeEditor({
     taRef.current?.focus();
     setSoundOn(!isMuted());
   }, []);
+
+  // After a programmatic edit (Tab), restore the caret to the intended spot.
+  useEffect(() => {
+    if (pendingCaret.current != null && taRef.current) {
+      const p = pendingCaret.current;
+      pendingCaret.current = null;
+      taRef.current.selectionStart = p;
+      taRef.current.selectionEnd = p;
+      syncCaret();
+    }
+  }, [value]);
 
   const sharedStyle: React.CSSProperties = {
     fontSize,
@@ -75,6 +90,28 @@ export function CodeEditor({
       preRef.current.scrollLeft = sl;
     }
     if (gutterRef.current) gutterRef.current.scrollTop = st;
+  }
+
+  // Tab indents like a real editor (inserts the snippet's spaces at the caret)
+  // instead of moving focus to the next field.
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    if (e.shiftKey || disabled) return;
+    const ta = taRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? value.length;
+    const end = ta.selectionEnd ?? start;
+    let ins = "";
+    let k = start;
+    while (k < target.length && target[k] === " ") {
+      ins += " ";
+      k++;
+    }
+    if (!ins) ins = "  ";
+    pendingCaret.current = start + ins.length;
+    playKey();
+    onChange(value.slice(0, start) + ins + value.slice(end));
   }
 
   function toggleSound() {
@@ -226,6 +263,7 @@ export function CodeEditor({
             }}
             onPaste={onPaste}
             onScroll={onScroll}
+            onKeyDown={onKeyDown}
             onKeyUp={syncCaret}
             onClick={syncCaret}
             spellCheck={false}

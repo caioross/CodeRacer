@@ -18,6 +18,7 @@ export interface RoomRow {
   language: LangId;
   difficulty: Difficulty;
   max_players: number;
+  is_public: boolean;
   leader_id: string;
   snippet: RoomSnippet | null;
   start_at: string | null; // ISO; moment typing begins
