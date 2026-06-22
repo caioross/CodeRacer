@@ -34,6 +34,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [presence, setPresence] = useState<Record<string, PresenceMeta>>({});
   const [progress, setProgress] = useState<Record<string, ProgressMsg>>({});
+  const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
   const [joinName, setJoinName] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const meIdRef = useRef<string | null>(null);
   const myFinishRef = useRef<number | null>(null);
   const myAbandonRef = useRef(false);
+  const myReadyRef = useRef(false);
   const myMetaRef = useRef<PresenceMeta | null>(null);
   const finishPostedRef = useRef(false);
   const claimingRef = useRef(false);
@@ -152,8 +154,16 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setPresence(map);
       });
       channel.on("presence", { event: "join" }, ({ newPresences }) => {
+        let someoneElse = false;
         for (const p of newPresences as unknown as PresenceMeta[]) {
-          if (p.id !== id) pushSystem(`${p.name} entrou na sala`);
+          if (p.id !== id) {
+            pushSystem(`${p.name} entrou na sala`);
+            someoneElse = true;
+          }
+        }
+        // Broadcast has no replay — re-announce my "ready" so newcomers see it.
+        if (someoneElse && myReadyRef.current) {
+          channel.send({ type: "broadcast", event: "ready", payload: { id, ready: true } });
         }
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
@@ -172,6 +182,13 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         const m = payload as ChatMsg;
         if (!m?.id) return;
         setChat(prev => [...prev.slice(-80), m]);
+      });
+
+      // Ready-check rides on broadcast (reliable) instead of presence re-track.
+      channel.on("broadcast", { event: "ready" }, ({ payload }) => {
+        const m = payload as { id?: string; ready?: boolean };
+        if (!m?.id) return;
+        setReadyMap(prev => ({ ...prev, [m.id as string]: !!m.ready }));
       });
 
       // Leader kicked someone — if it's me, leave the room.
@@ -232,27 +249,21 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       if (room?.status === "racing") {
         myFinishRef.current = null;
         myAbandonRef.current = false;
+        myReadyRef.current = false;
         finishPostedRef.current = false;
         setProgress({});
+        setReadyMap({});
       }
     }
     if (room?.status === "lobby") {
       myFinishRef.current = null;
       myAbandonRef.current = false;
+      myReadyRef.current = false;
       finishPostedRef.current = false;
       setProgress({});
+      setReadyMap({});
     }
   }, [room?.start_at, room?.status]);
-
-  // Clear my "ready" flag once the room leaves the lobby, so the next lobby
-  // (after a reset) starts with everyone unready again.
-  useEffect(() => {
-    if (room?.status && room.status !== "lobby" && myMetaRef.current?.ready) {
-      const meta: PresenceMeta = { ...myMetaRef.current, ready: false };
-      myMetaRef.current = meta;
-      channelRef.current?.track(meta);
-    }
-  }, [room?.status]);
 
   // Tick a clock only while a countdown is pending.
   const startMs = room?.start_at ? Date.parse(room.start_at) : 0;
@@ -278,7 +289,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         errors: pr?.errors ?? 0,
         finishedAt: pr?.finishedAt ?? null,
         place: null,
-        ready: meta.ready ?? false,
+        ready: readyMap[meta.id] ?? false,
         abandoned: pr?.abandoned ?? false
       };
     });
@@ -288,7 +299,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       .sort((a, b) => (a.finishedAt as number) - (b.finishedAt as number));
     finishers.forEach((p, i) => (p.place = i + 1));
     return list;
-  }, [presence, progress]);
+  }, [presence, progress, readyMap]);
 
   const isLeader = !!room && !!meId && room.leader_id === meId;
   const countdownN =
@@ -407,14 +418,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     ch.send({ type: "broadcast", event: "chat", payload: msg });
   }, [presence]);
 
-  // Toggle my "ready" state by re-tracking presence (syncs to everyone, incl. late joiners).
+  // Toggle my "ready" via broadcast (reliable, unlike presence re-track).
   const setReady = useCallback((ready: boolean) => {
+    const id = meIdRef.current;
     const ch = channelRef.current;
-    const base = myMetaRef.current;
-    if (!ch || !base) return;
-    const meta: PresenceMeta = { ...base, ready };
-    myMetaRef.current = meta;
-    ch.track(meta);
+    if (!id || !ch) return;
+    myReadyRef.current = ready;
+    setReadyMap(prev => ({ ...prev, [id]: ready })); // optimistic
+    ch.send({ type: "broadcast", event: "ready", payload: { id, ready } });
   }, []);
 
   // Leader removes a player: broadcast a kick the target obeys by leaving.
