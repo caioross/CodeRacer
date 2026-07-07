@@ -48,6 +48,13 @@ persistência de partidas, migrations Supabase, claim-leader, ou modo fantasma f
 
 ---
 
+### `cr-fleet-ops`
+**Quando usar:** você é uma rotina agendada da frota (Curador 11h, Resolvedor 14h, PR Doctor 18h)
+ou vai operar issues/PRs/branches `auto/*` do repo. Receitas de claim, worktree, gate, quórum,
+merge/limpeza e Diário de Bordo. A lei da frota é `docs/fleet/HANDBOOK.md`.
+
+---
+
 ## Skills transversais relevantes
 
 | Skill | Quando usar no CodeRacer |
