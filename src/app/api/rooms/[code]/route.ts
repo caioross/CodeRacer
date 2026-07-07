@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, type ResultRow, type RoomRow } from "@/lib/room";
+import { COUNTDOWN_MS, sanitizeResults, type ResultRow, type RoomRow } from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,7 +65,9 @@ export async function POST(req: Request, { params }: { params: { code: string } 
     }
 
     case "finish": {
-      const results: ResultRow[] = Array.isArray(body.results) ? body.results : [];
+      // Fronteira anti-cheat: `results` vem do cliente e alimenta o leaderboard
+      // global. Sanitiza/clampa/descarta linhas forjadas antes de persistir.
+      const results: ResultRow[] = sanitizeResults(body.results, room as RoomRow);
       // Conditional transition racing→finished so only the first caller persists.
       const { data: flipped } = await sb
         .from("rooms")
