@@ -1,6 +1,6 @@
 ---
 name: cr-fleet-ops
-description: Receitas operacionais da frota autônoma do CodeRacer — claim de issue, worktree no Windows, gate de validação, quórum adversarial, merge/limpeza e Diário de Bordo. Use SEMPRE que você for uma rotina agendada do CodeRacer (Curador, Resolvedor, PR Doctor) ou precisar operar issues/PRs/branches auto/* no repo caioross/CodeRacer.
+description: Receitas operacionais da frota autônoma do CodeRacer — claim de issue, worktree no Windows, gate de validação, quórum adversarial, merge/limpeza, Diário de Bordo, Quadro (Project #30), Discussions (retro/ideias/decisões/Q&A), pareceres do Conselho, ICE e meta-evolução da frota. Use SEMPRE que você for uma rotina agendada do CodeRacer (Curador, Conselho, Resolvedor, PR Doctor, Persona, Meta) ou precisar operar issues/PRs/branches auto/*/Discussions/Projects no repo caioross/CodeRacer.
 ---
 
 # cr-fleet-ops — Operação da Frota CodeRacer
@@ -109,7 +109,30 @@ Formato (≤6 linhas):
 <!-- agente:coderacer/<papel> -->
 ```
 
-## 9. Gotchas do ambiente
+## 9. Órgãos do GitHub — Quadro, Discussions, Parecer, ICE
+
+**Leia `references/github-orgaos.md`** (nesta skill) — tem TODOS os IDs estáveis (Project #30,
+campo Status e opções, categorias de Discussions, repo node) e as receitas GraphQL/CLI prontas:
+reconciliar o quadro, criar/comentar/listar discussions, marcar resposta de Q&A, o formato do
+Parecer do Conselho com regra de idempotência, e a tabela ICE para converter Ideas em issues.
+Não redescubra IDs por tentativa — está tudo lá; se algum quebrar, use as queries de
+descoberta no fim do arquivo e atualize-o via PR.
+
+Divisão de responsabilidade sobre o quadro: o **Curador reconcilia tudo** diariamente
+(verdade = issues/labels/PRs); Resolvedor move o próprio card para In Progress/In Review ao
+agir; PR Doctor move para Done ao mergear (ou deixa para a reconciliação seguinte se falhar).
+
+## 10. Meta-evolução (só a rotina Meta, domingo)
+
+Prompts das rotinas vivem em `C:\Users\Matrix\.claude\scheduled-tasks\coderacer-*\SKILL.md`
+(o corpo depois do frontmatter é o prompt executado). Change-control (HANDBOOK §12):
+- Pode editar DIRETO: prompts `coderacer-*`. Registre o diff resumido no [Retro].
+- Via PR: skills do repo, HANDBOOK, este arquivo.
+- Proibido: tocar qualquer task que não comece com `coderacer-`; afrouxar HANDBOOK §7.1/§8;
+  mais que 3 mudanças/semana; horário novo fora de janela livre da frota SkillDepot
+  (confira com a ferramenta `list_scheduled_tasks` antes).
+
+## 11. Gotchas do ambiente
 
 - Windows: prefira Git Bash para os comandos acima; caminhos `/e/Projetos/...`.
 - `pnpm install` num worktree novo é rápido (store compartilhado), mas necessário — `.next/`

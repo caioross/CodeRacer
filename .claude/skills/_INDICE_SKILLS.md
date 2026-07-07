@@ -49,9 +49,12 @@ persistência de partidas, migrations Supabase, claim-leader, ou modo fantasma f
 ---
 
 ### `cr-fleet-ops`
-**Quando usar:** você é uma rotina agendada da frota (Curador 11h, Resolvedor 14h, PR Doctor 18h)
-ou vai operar issues/PRs/branches `auto/*` do repo. Receitas de claim, worktree, gate, quórum,
-merge/limpeza e Diário de Bordo. A lei da frota é `docs/fleet/HANDBOOK.md`.
+**Quando usar:** você é uma rotina agendada da frota (Curador 11h · Conselho ter/sex 12h ·
+Resolvedor 14h · PR Doctor 18h · Persona sáb 16h · Meta dom 17h) ou vai operar
+issues/PRs/branches `auto/*`, o Quadro (Project #30) ou Discussions do repo. Receitas de claim,
+worktree, gate, quórum, merge/limpeza, Diário (#4), quadro, discussions, parecer do Conselho,
+ICE e meta-evolução. A lei da frota é `docs/fleet/HANDBOOK.md`; IDs do GitHub em
+`cr-fleet-ops/references/github-orgaos.md`.
 
 ---
 
