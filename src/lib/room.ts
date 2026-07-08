@@ -90,6 +90,75 @@ export interface LivePlayer {
 
 export const COUNTDOWN_MS = 4000;
 
+// ─── Sanitização de resultados (fronteira anti-cheat do leaderboard) ──────────
+// A engine de digitação é client-side, então a API roda com service_role e é o
+// único guardião das tabelas `matches`/`scores` (leaderboard global público).
+// `sanitizeResults` é validação de FRONTEIRA: não recalcula a corrida (fora de
+// escopo), apenas limita o raio de dano de um payload de `finish` forjado.
+
+/** Teto de WPM humano plausível — acima disso a linha é descartada (não clampada). */
+export const MAX_PLAUSIBLE_WPM = 350;
+/** Teto de comprimento de nick — espelha o cap do cliente em `useRoom` (`join`). */
+export const MAX_NAME_LEN = 20;
+/** Teto absoluto de jogadores por sala — espelha o cap de `settings` na API. */
+export const ABSOLUTE_MAX_PLAYERS = 12;
+
+/** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
+function clampInt(n: unknown, min: number, max: number): number {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, v));
+}
+
+/**
+ * Valida e sanitiza um array de `results` fornecido pelo cliente antes de
+ * persistir no leaderboard. DESCARTA linhas que não podem ser um resultado
+ * humano real (não-objeto, `name` vazio após trim, ou `wpm` fora do inteiro
+ * plausível 0..MAX_PLAUSIBLE_WPM) e CLAMPA os demais campos. Campos cosméticos
+ * (`id`/`color`/`progress`/`finishedAt`) são preservados para a tela de fim de
+ * corrida. O array é limitado a `room.max_players` (teto absoluto 12).
+ *
+ * Puro e determinístico — coberto por `scripts/validate-persistence.mjs`.
+ */
+export function sanitizeResults(
+  input: unknown,
+  room: Pick<RoomRow, "max_players">
+): ResultRow[] {
+  if (!Array.isArray(input)) return [];
+  const cap = Math.min(
+    Math.max(Math.round(Number(room?.max_players)) || ABSOLUTE_MAX_PLAYERS, 1),
+    ABSOLUTE_MAX_PLAYERS
+  );
+
+  const out: ResultRow[] = [];
+  for (const r of input) {
+    if (out.length >= cap) break; // descarta linhas além da capacidade da sala
+    if (!r || typeof r !== "object") continue;
+    const row = r as Partial<ResultRow>;
+
+    const name = typeof row.name === "string" ? row.name.trim().slice(0, MAX_NAME_LEN) : "";
+    if (!name) continue; // não dá para atribuir um score anônimo
+
+    const wpm = Math.round(Number(row.wpm));
+    if (!Number.isFinite(wpm) || wpm < 0 || wpm > MAX_PLAUSIBLE_WPM) continue; // implausível → descarta
+
+    const placeN = Math.round(Number(row.place));
+    out.push({
+      id: typeof row.id === "string" ? row.id : "",
+      name,
+      color: typeof row.color === "string" ? row.color : "",
+      wpm,
+      accuracy: clampInt(row.accuracy, 0, 100),
+      errors: clampInt(row.errors, 0, Number.MAX_SAFE_INTEGER),
+      progress: Math.max(0, Math.min(1, Number(row.progress) || 0)),
+      place: Number.isFinite(placeN) && placeN >= 1 ? placeN : null,
+      finished: !!row.finished,
+      finishedAt: Number.isFinite(Number(row.finishedAt)) ? Number(row.finishedAt) : null
+    });
+  }
+  return out;
+}
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",
