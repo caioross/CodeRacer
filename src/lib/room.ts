@@ -90,6 +90,14 @@ export interface LivePlayer {
 
 export const COUNTDOWN_MS = 4000;
 
+/**
+ * Janela de graça da liderança: sem sinal de presença no servidor, a ação
+ * `claim-leader` só é aceita quando a sala está ESTAGNADA — nenhuma ação do líder
+ * há mais de LEADER_GRACE_MS. Isso impede o sequestro de liderança com o líder
+ * ainda ativo (que mantém `updated_at` fresco a cada ação, via trigger rooms_touch).
+ */
+export const LEADER_GRACE_MS = 15000;
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",

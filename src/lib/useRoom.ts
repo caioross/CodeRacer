@@ -336,7 +336,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     postAction("finish", { results: toResults(players) });
   }, [players, room, isLeader, startMs, postAction, toResults]);
 
-  // Promote a new leader if the current one left.
+  // Promote a new leader if the current one left. O servidor só aceita o claim quando
+  // a sala está estagnada (líder inativo além de LEADER_GRACE_MS), então tentamos em
+  // silêncio e reagendamos: sem retry, uma sala cujo líder sumiu logo após agir ficaria
+  // sem líder durante a janela de graça. Fetch direto (não postAction) para não emitir
+  // toast de erro na rejeição transitória "Líder ainda ativo".
   useEffect(() => {
     if (!room || !meId) return;
     const ids = Object.keys(presence);
@@ -344,11 +348,33 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     const elected = Object.values(presence).sort(
       (a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id)
     )[0];
-    if (elected?.id === meId && !claimingRef.current) {
+    if (elected?.id !== meId) return;
+
+    let cancelled = false;
+    const attempt = async () => {
+      if (cancelled || claimingRef.current) return;
       claimingRef.current = true;
-      postAction("claim-leader").finally(() => (claimingRef.current = false));
-    }
-  }, [presence, room, meId, postAction]);
+      try {
+        await fetch(`/api/rooms/${code}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "claim-leader", playerId: meId })
+        });
+        // Sucesso troca leader_id → postgres_changes atualiza `room` e este efeito é
+        // desmontado. Rejeição (líder ainda fresco) apenas cai no próximo tick.
+      } catch {
+        /* offline — reestenta no próximo tick */
+      } finally {
+        claimingRef.current = false;
+      }
+    };
+    attempt();
+    const t = setInterval(attempt, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [presence, room, meId, code]);
 
   // ---- actions ----
   const join = useCallback(
