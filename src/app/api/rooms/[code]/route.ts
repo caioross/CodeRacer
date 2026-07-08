@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, type ResultRow, type RoomRow } from "@/lib/room";
+import { COUNTDOWN_MS, LEADER_GRACE_MS, type ResultRow, type RoomRow } from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,8 +88,27 @@ export async function POST(req: Request, { params }: { params: { code: string } 
 
     case "claim-leader": {
       if (!playerId) return NextResponse.json({ ok: false, error: "playerId" }, { status: 400 });
-      // The client only claims when it has detected the current leader left.
-      await sb.from("rooms").update({ leader_id: playerId }).eq("code", code);
+      // Já sou o líder → idempotente, nada a fazer.
+      if (isLeader) return NextResponse.json({ ok: true });
+      // Sem presença no servidor, a única guarda é a estagnação da sala: só aceitamos
+      // a tomada quando o líder não age há mais de LEADER_GRACE_MS (updated_at, mantido
+      // pelo trigger rooms_touch). Enquanto o líder estiver ativo, o claim é rejeitado —
+      // isso bloqueia o sequestro de liderança por um terceiro não participante.
+      const lastTouch = Date.parse(room.updated_at);
+      if (Number.isFinite(lastTouch) && Date.now() - lastTouch < LEADER_GRACE_MS) {
+        return NextResponse.json({ ok: false, error: "Líder ainda ativo" }, { status: 409 });
+      }
+      // Update condicional em leader_id: se dois candidatos correrem, só o primeiro
+      // vence; o segundo vê 0 linhas afetadas e recebe 409 (a sala não é mais dele).
+      const { data: claimed } = await sb
+        .from("rooms")
+        .update({ leader_id: playerId })
+        .eq("code", code)
+        .eq("leader_id", room.leader_id)
+        .select("code");
+      if (!claimed || !claimed.length) {
+        return NextResponse.json({ ok: false, error: "Liderança já reivindicada" }, { status: 409 });
+      }
       return NextResponse.json({ ok: true });
     }
 
