@@ -174,7 +174,32 @@
     box-shadow: inset 0 -2px 0 #00ff88;
     border-radius: 2px;
   }
+
+  /* Erro de digitação onde o olho está: o card do editor pisca uma borda
+     vermelha (sinal de COR) enquanto um ícone aparece na margem (sinal de
+     POSIÇÃO). Nunca só por cor. Um único pulso curto — não estroboscópico. */
+  .editor-error {
+    box-shadow:
+      0 0 0 1px rgba(255, 56, 96, 0.6) inset,
+      0 0 22px rgba(255, 56, 96, 0.28);
+    border-color: rgba(255, 56, 96, 0.55);
+    transition: box-shadow 180ms ease-out, border-color 180ms ease-out;
+  }
 }
+
+/* Shake cirúrgico do card do editor no erro (issue #10). transform-only =
+   composited na GPU, sem layout/reflow competindo com a textarea (área sagrada).
+   Sob prefers-reduced-motion a regra global zera a duração → sem movimento,
+   restando o flash de cor + ícone. Sem transform em repouso (nada de containing
+   block novo para o menu de opções position:fixed). */
+@keyframes cr-editor-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.editor-shake { animation: cr-editor-shake 90ms ease-out; }
 
 /* Animated conic border used by StarBorder (CTA) */
 @keyframes cr-spin {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
+import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
 import { isMuted, playKey, setMuted } from "@/lib/sound";
+import { cn } from "@/lib/utils";
 
 // VSCode-like typing surface with live syntax highlighting: a transparent
 // textarea sits over a colored <pre> mirror (perfectly aligned metrics).
@@ -20,7 +21,8 @@ export function CodeEditor({
   disabled,
   language,
   target,
-  onAbandon
+  onAbandon,
+  errorPulse = 0
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -30,11 +32,17 @@ export function CodeEditor({
   /** The snippet being typed — used so Tab inserts the right indentation. */
   target: string;
   onAbandon?: () => void;
+  /** Bumps on every keystroke that produced a wrong char (issue #10). Each
+   *  increment fires the error feedback: shake (motion) + red flash + margin icon. */
+  errorPulse?: number;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const pendingCaret = useRef<number | null>(null);
+  const errorTimer = useRef<number | null>(null);
+  const [errorActive, setErrorActive] = useState(false);
   const [fontSize, setFontSize] = useState(15);
   const [wrap, setWrap] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -63,6 +71,33 @@ export function CodeEditor({
       syncCaret();
     }
   }, [value]);
+
+  // Feedback de erro no card do editor (issue #10, spec §779). Cada pulso liga o
+  // flash de borda + ícone (cor + posição) por ~240ms — erros consecutivos apenas
+  // renovam a janela, então nunca estrobosa >3Hz — e dispara o shake via classe CSS
+  // (transform composited; sob prefers-reduced-motion a regra global zera a duração,
+  // então não há movimento, só o flash + ícone).
+  useEffect(() => {
+    if (errorPulse === 0) return;
+    setErrorActive(true);
+    if (errorTimer.current) window.clearTimeout(errorTimer.current);
+    errorTimer.current = window.setTimeout(() => setErrorActive(false), 240);
+
+    const el = cardRef.current;
+    if (el) {
+      el.classList.remove("editor-shake");
+      // força reflow para reiniciar a animação em erros consecutivos
+      void el.offsetWidth;
+      el.classList.add("editor-shake");
+    }
+  }, [errorPulse]);
+
+  useEffect(
+    () => () => {
+      if (errorTimer.current) window.clearTimeout(errorTimer.current);
+    },
+    []
+  );
 
   const sharedStyle: React.CSSProperties = {
     fontSize,
@@ -124,7 +159,10 @@ export function CodeEditor({
   const activeLineTop = 16 + (caret.line - 1) * lineHeight - scrollTop;
 
   return (
-    <div className="card flex flex-col overflow-hidden">
+    <div
+      ref={cardRef}
+      className={cn("card flex flex-col overflow-hidden", errorActive && "editor-error")}
+    >
       {/* title bar */}
       <div className="flex items-center justify-between border-b border-bg-line px-3 py-2 text-xs font-mono">
         <div className="flex items-center gap-2">
@@ -229,6 +267,16 @@ export function CodeEditor({
         )}
 
         <div className="relative flex-1 overflow-hidden">
+          {/* Erro na margem: sinal de POSIÇÃO (não só cor) — vale sobretudo para
+              quem tem reduced-motion e não vê o shake. */}
+          {errorActive && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-1 rounded-md border border-neon-red/50 bg-neon-red/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-neon-red"
+            >
+              <AlertTriangle className="size-3" /> erro
+            </div>
+          )}
           {showGutter && !disabled && (
             <div
               aria-hidden

@@ -33,6 +33,9 @@ export function Race({
   const [errors, setErrors] = useState(0);
   const [totalKeystrokes, setTotalKeystrokes] = useState(0);
   const [now, setNow] = useState<number>(Date.now());
+  // Bumps every time a keystroke lands a wrong char — drives the editor-card
+  // error feedback (issue #10). Não altera nenhuma métrica (WPM/erros/precisão).
+  const [errorPulse, setErrorPulse] = useState(0);
 
   // Tick clock — stops once we finish so the timer and WPM freeze in place.
   useEffect(() => {
@@ -87,6 +90,7 @@ export function Race({
         }
         setErrors(e => e + newErrors);
         setTotalKeystrokes(k => k + added);
+        if (newErrors > 0) setErrorPulse(p => p + 1);
       } else if (next.length < typed.length) {
         // Backspace doesn't count as keystroke in classic WPM tests
       }
@@ -117,6 +121,7 @@ export function Race({
             language={snippet.language}
             target={code}
             onAbandon={iFinished ? undefined : onAbandon}
+            errorPulse={errorPulse}
           />
         </div>
 
