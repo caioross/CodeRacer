@@ -20,6 +20,10 @@ import { newPlayerId } from "@/lib/room";
 import { useAuth } from "@/lib/useAuth";
 
 const PERSIST_NAME_KEY = "coderacer:name";
+// Última dificuldade usada. Ausência = primeira sala do jogador → nasce no Fácil (§0.3).
+const PERSIST_DIFFICULTY_KEY = "coderacer:difficulty";
+const isDifficulty = (v: unknown): v is Difficulty =>
+  v === "easy" || v === "medium" || v === "hard";
 
 type PublicRoom = {
   code: string;
@@ -46,7 +50,8 @@ export function HomeView() {
   const [joinCode, setJoinCode] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [language, setLanguage] = useState<LangId>("javascript");
-  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
+  // Primeira sala nasce no Fácil; jogadores que já criaram salas recuperam o last-used abaixo.
+  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [isPublic, setIsPublic] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,6 +62,13 @@ export function HomeView() {
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(PERSIST_NAME_KEY) : null;
     if (saved) setName(saved);
+  }, []);
+
+  // Recupera a última dificuldade escolhida (quem já criou salas mantém sua preferência).
+  // Sem registro válido → mantém o padrão "easy" já definido no estado inicial.
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem(PERSIST_DIFFICULTY_KEY) : null;
+    if (isDifficulty(saved)) setDifficulty(saved);
   }, []);
 
   // When signed in with Google, default the nick to that name.
@@ -114,6 +126,10 @@ export function HomeView() {
         toast.push({ kind: "error", text: json?.error || "Erro ao criar sala" });
         return;
       }
+      // Lembra a dificuldade usada para as próximas salas deste jogador (last-used).
+      try {
+        localStorage.setItem(PERSIST_DIFFICULTY_KEY, difficulty);
+      } catch {}
       setCreateOpen(false);
       persistAndGo(playerId, json.code);
     } catch {
