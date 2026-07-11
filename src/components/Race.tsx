@@ -56,8 +56,13 @@ export function Race({
   }, [typed, code]);
   // WPM: standard ~5 chars per word
   const wpm = elapsedMin > 0.001 ? Math.round((correctChars / 5) / elapsedMin) : 0;
+  // Precisão honesta (issue #20): 100% só com zero erros cometidos. Com ≥1 erro,
+  // usa floor e teto de 99% para nunca contradizer o cartão "Erros (total)".
+  // errors > 0 garante totalKeystrokes > 0 (não há erro sem tecla), sem divisão por zero.
   const accuracy =
-    totalKeystrokes === 0 ? 100 : Math.max(0, Math.round((1 - errors / totalKeystrokes) * 100));
+    errors === 0
+      ? 100
+      : Math.max(0, Math.min(99, Math.floor((1 - errors / totalKeystrokes) * 100)));
   const progress = code.length === 0 ? 0 : Math.min(1, typed.length / code.length);
 
   // Stream progress to server (throttled implicitly by react re-renders on typed change)
@@ -154,9 +159,10 @@ export function Race({
             />
             <Stat
               icon={<span className="font-bold text-sm leading-none">⛔</span>}
-              label="Erros"
+              label="Erros (total)"
               value={errors}
               color={errors === 0 ? "text-neon-green" : "text-neon-red"}
+              title="Teclas erradas digitadas ao longo da corrida — inclui as que você já corrigiu."
             />
           </div>
           <div className="mt-3 relative h-1.5 rounded-full bg-bg-soft overflow-hidden">
@@ -182,15 +188,17 @@ function Stat({
   icon,
   label,
   value,
-  color
+  color,
+  title
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   color: string;
+  title?: string;
 }) {
   return (
-    <div className="rounded-md border border-bg-line bg-bg-soft/60 px-3 py-2">
+    <div className="rounded-md border border-bg-line bg-bg-soft/60 px-3 py-2" title={title}>
       <div className="flex items-center gap-1 text-text-muted text-[10px] uppercase tracking-wider">
         {icon}
         {label}
