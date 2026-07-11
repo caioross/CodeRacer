@@ -45,11 +45,14 @@ limpa: `git rev-list --left-right --count origin/main...HEAD` deve dar `0 0`.
 ## 4. Gate de validação (antes de qualquer PR)
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm build
+pnpm typecheck && pnpm build           # núcleo = o que a CI roda
 node scripts/validate-metrics.mjs      # engine (Race.tsx, CodeDisplay.tsx, WPM/precisão)
 node scripts/validate-persistence.mjs  # persistência (useRoom, supabase.ts, API rooms)
 ```
 
+`pnpm lint` = **N/A**: o repo não tem `.eslintrc` (nem `eslintConfig` no `package.json`), então
+`next lint` só abre o setup interativo e falha em shell headless; a CI roda só typecheck+build.
+Não exija lint no gate nem escreva disclaimer de lint no PR até existir config ESLint.
 Na dúvida sobre quais scripts, rode os dois (são baratos). Vermelho sem correção honesta no
 escopo → PR **DRAFT** explicando o bloqueio. Nunca enfraqueça o gate.
 

@@ -74,13 +74,19 @@ remova `em-resolucao` — o PR passa a ser a reivindicação.
 No worktree:
 
 ```
-pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm build
+pnpm install --frozen-lockfile && pnpm typecheck && pnpm build   # núcleo = exatamente o que a CI roda
 node scripts/validate-metrics.mjs      # sempre que tocar engine/Race/CodeDisplay — na dúvida, rode
 node scripts/validate-persistence.mjs  # sempre que tocar persistência/useRoom/API — na dúvida, rode
 ```
 
+`pnpm lint` **só entra no gate se o repo tiver config ESLint**. Hoje NÃO há `.eslintrc` (nem
+`eslintConfig` no `package.json`): `next lint` sem config abre o setup interativo e falha em
+shell headless, e a CI (`.github/workflows/ci.yml`) roda só typecheck+build. Logo, lint = **N/A** —
+não é um passo que se possa "passar", e não precisa de disclaimer no PR. **Não** adicione config de
+ESLint só para satisfazer o gate; se um dia houver `.eslintrc`, o lint volta a ser obrigatório aqui.
 Os dois scripts são baratos; na dúvida rode ambos. Vermelho sem correção honesta dentro do
-escopo = PR **DRAFT** explicando o bloqueio. Nunca enfraqueça validação para "passar".
+escopo = PR **DRAFT** explicando o bloqueio. Nunca enfraqueça validação para "passar" — deixar
+honesto um passo que não existe (lint sem config) não é afrouxar; desabilitar typecheck/build/scripts/teste é.
 
 ## §7 Doutrina de autonomia
 
