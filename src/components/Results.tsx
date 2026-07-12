@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { RotateCcw, Trophy } from "lucide-react";
 import type { Player, RoomState } from "@/lib/types";
 import { Chat } from "./Chat";
 import { formatMs } from "@/lib/utils";
+
+// Metadados por lugar (índice = colocação-1): altura da coluna e medalha.
+const PODIUM_META = [
+  { place: 1, height: 220, medal: "🥇" },
+  { place: 2, height: 180, medal: "🥈" },
+  { place: 3, height: 150, medal: "🥉" }
+] as const;
 
 export function Results({
   room,
@@ -20,6 +27,7 @@ export function Results({
   onPlayAgain: () => void;
   onChat: (text: string) => void;
 }) {
+  const reduced = useReducedMotion();
   const startedAt = room.startedAt || 0;
   const ranked = [...room.players].sort((a, b) => {
     // Finishers first (by place), then non-finishers by progress desc
@@ -31,6 +39,11 @@ export function Results({
 
   const podium = ranked.slice(0, 3);
   const me = ranked.find(p => p.id === meId);
+
+  // Ordem na tela: 2º, 1º, 3º (só as colocações que têm jogador).
+  const solo = ranked.length === 1;
+  const duo = ranked.length === 2;
+  const screenOrder = duo ? [1, 0] : [1, 0, 2];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
@@ -57,49 +70,32 @@ export function Results({
           )}
         </div>
 
-        {/* podium */}
-        <div className="grid grid-cols-3 gap-3 items-end max-w-2xl mx-auto">
-          {[1, 0, 2].map(idx => {
-            const p = podium[idx];
-            const heights = [180, 220, 150];
-            const medals = ["🥇", "🥈", "🥉"];
-            // We want order on screen: 2nd, 1st, 3rd
-            const place = idx + 1;
-            if (!p) return <div key={idx} className="card" style={{ height: heights[idx] }} />;
-            const isMe = p.id === meId;
-            const isFirst = place === 1;
-            return (
-              <motion.div
-                key={p.id}
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.15 + idx * 0.1, type: "spring", stiffness: 160, damping: 18 }}
-                className="card relative overflow-hidden p-4 flex flex-col justify-end"
-                style={{
-                  height: heights[idx],
-                  borderColor: isFirst ? "#fbbf24" : `${p.color}60`,
-                  boxShadow: isFirst
-                    ? "0 0 32px rgba(251, 191, 36, 0.3)"
-                    : `0 0 16px ${p.color}30`
-                }}
-              >
-                <div className="absolute top-3 left-3 text-3xl">{medals[idx]}</div>
-                <div className="text-center mb-2 mt-2 text-xs text-text-dim font-mono">
-                  {place}º lugar
-                </div>
-                <div
-                  className="text-center font-bold truncate"
-                  style={{ color: p.color, fontSize: isFirst ? 22 : 18 }}
-                >
-                  {p.name}{isMe && " (você)"}
-                </div>
-                <div className="text-center text-[11px] text-text-muted mt-1 font-mono">
-                  {Math.round(p.wpm)} wpm · {Math.round(p.accuracy)}%
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+        {/* pódio (ou resultado herói quando há um só corredor) */}
+        {solo ? (
+          <SoloHero
+            player={podium[0]}
+            startedAt={startedAt}
+            isMe={podium[0].id === meId}
+            reduced={reduced}
+          />
+        ) : (
+          <div
+            className={`grid gap-3 items-end mx-auto ${
+              duo ? "grid-cols-2 max-w-md" : "grid-cols-3 max-w-2xl"
+            }`}
+          >
+            {screenOrder.map((rankIdx, col) => (
+              <PodiumCard
+                key={podium[rankIdx].id}
+                player={podium[rankIdx]}
+                meta={PODIUM_META[rankIdx]}
+                col={col}
+                isMe={podium[rankIdx].id === meId}
+                reduced={reduced}
+              />
+            ))}
+          </div>
+        )}
 
         {/* full table */}
         <div className="card overflow-hidden">
@@ -170,6 +166,111 @@ export function Results({
           />
         </div>
       </aside>
+    </div>
+  );
+}
+
+// Uma coluna do pódio (2+ jogadores). Sem fallback vazio: só recebe jogador existente.
+function PodiumCard({
+  player,
+  meta,
+  col,
+  isMe,
+  reduced
+}: {
+  player: Player;
+  meta: (typeof PODIUM_META)[number];
+  col: number;
+  isMe: boolean;
+  reduced: boolean | null;
+}) {
+  const isFirst = meta.place === 1;
+  return (
+    <motion.div
+      initial={reduced ? false : { y: 30, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={
+        reduced
+          ? { duration: 0 }
+          : { delay: 0.15 + col * 0.1, type: "spring", stiffness: 160, damping: 18 }
+      }
+      className="card relative overflow-hidden p-4 flex flex-col justify-end"
+      style={{
+        height: meta.height,
+        borderColor: isFirst ? "#fbbf24" : `${player.color}60`,
+        boxShadow: isFirst
+          ? "0 0 32px rgba(251, 191, 36, 0.3)"
+          : `0 0 16px ${player.color}30`
+      }}
+    >
+      <div className="absolute top-3 left-3 text-3xl">{meta.medal}</div>
+      <div className="text-center mb-2 mt-2 text-xs text-text-dim font-mono">
+        {meta.place}º lugar
+      </div>
+      <div
+        className="text-center font-bold truncate"
+        style={{ color: player.color, fontSize: isFirst ? 22 : 18 }}
+      >
+        {player.name}{isMe && " (você)"}
+      </div>
+      <div className="text-center text-[11px] text-text-muted mt-1 font-mono">
+        {Math.round(player.wpm)} wpm · {Math.round(player.accuracy)}%
+      </div>
+    </motion.div>
+  );
+}
+
+// Resultado "herói" para corrida solo: sem pódio de 3 lugares com buracos.
+function SoloHero({
+  player,
+  startedAt,
+  isMe,
+  reduced
+}: {
+  player: Player;
+  startedAt: number;
+  isMe: boolean;
+  reduced: boolean | null;
+}) {
+  const time = player.finishedAt ? formatMs(player.finishedAt - startedAt) : "—";
+  return (
+    <div className="max-w-md mx-auto">
+      <motion.div
+        initial={reduced ? false : { scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 160, damping: 16 }}
+        className="card relative overflow-hidden p-6 text-center"
+        style={{
+          borderColor: "#fbbf24",
+          boxShadow: "0 0 32px rgba(251, 191, 36, 0.3)"
+        }}
+      >
+        <div className="text-5xl mb-2">🥇</div>
+        <div className="text-xs text-text-dim font-mono mb-1">1º lugar</div>
+        <div
+          className="font-bold truncate text-2xl"
+          style={{ color: player.color }}
+        >
+          {player.name}{isMe && " (você)"}
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-5">
+          <SoloStat label="wpm" value={Math.round(player.wpm)} />
+          <SoloStat label="precisão" value={`${Math.round(player.accuracy)}%`} />
+          <SoloStat label="erros" value={player.errors} />
+          <SoloStat label="tempo" value={time} />
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function SoloStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg bg-bg-line/30 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-text-muted font-mono">
+        {label}
+      </div>
+      <div className="text-lg font-bold font-mono">{value}</div>
     </div>
   );
 }
