@@ -4,7 +4,7 @@
  * Valida as fórmulas de WPM, precisão e progresso do CodeRacer (Race.tsx).
  * Execute: node scripts/validate-metrics.mjs
  *
- * Fórmulas espelhadas de src/components/Race.tsx (linhas 49-60).
+ * Fórmulas espelhadas de src/components/Race.tsx (bloco de cálculo de métricas).
  * Se as fórmulas mudarem lá, atualize aqui também.
  */
 
@@ -37,17 +37,18 @@ function calcWpm(correct, elapsedMs) {
 }
 
 /**
- * Precisão: (1 - erros / totalKeystrokes) * 100, arredondado.
- * Retorna 100 se não houve nenhum keystroke ainda.
+ * Precisão honesta (issue #20): 100% só com zero erros cometidos.
+ * Com ≥1 erro, usa floor e teto de 99% para nunca exibir 100% coexistindo com
+ * "Erros ≥ 1". errors > 0 garante totalKeystrokes > 0 (não há erro sem tecla).
  * Mínimo de 0 (não fica negativo).
  * @param {number} errors          - Total de teclas incorretas (cumulativo)
  * @param {number} totalKeystrokes - Total de teclas para frente (não backspace)
  * @returns {number} Precisão 0..100
  */
 function calcAccuracy(errors, totalKeystrokes) {
-  return totalKeystrokes === 0
+  return errors === 0
     ? 100
-    : Math.max(0, Math.round((1 - errors / totalKeystrokes) * 100));
+    : Math.max(0, Math.min(99, Math.floor((1 - errors / totalKeystrokes) * 100)));
 }
 
 /**
@@ -136,6 +137,19 @@ assert("100 erros, 100 keystrokes → 0% (piso em 0)",
 // Caso 12: mais erros que keystrokes (estado inválido) → nunca < 0
 assert("120 erros, 100 keystrokes → piso em 0",
   calcAccuracy(120, 100), 0);
+
+// Caso 12b: honestidade (issue #20) — 1 erro em 200 teclas NÃO pode virar 100%.
+// Antes, Math.round(0.995*100)=100 contradizia o cartão "Erros 1". Agora → 99%.
+assert("1 erro, 200 keystrokes → 99% (nunca 100% com erro cometido)",
+  calcAccuracy(1, 200), 99);
+
+// Caso 12c: teto de 99% mesmo com fração altíssima (1 erro em 10000 teclas)
+assert("1 erro, 10000 keystrokes → 99% (teto, não 100%)",
+  calcAccuracy(1, 10_000), 99);
+
+// Caso 12d: 100% é reservado a zero erros cometidos
+assert("0 erros, 200 keystrokes → 100% (único caminho para 100%)",
+  calcAccuracy(0, 200), 100);
 
 // ─── Casos de teste: Progresso ───────────────────────────────────────────────
 
