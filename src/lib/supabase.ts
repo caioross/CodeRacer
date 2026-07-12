@@ -2,6 +2,7 @@
 // Runs only on the server — uses the service-role key (or anon as fallback),
 // never shipped to the browser.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { MAX_PLAUSIBLE_WPM } from "./room";
 
 let client: SupabaseClient | null = null;
 
@@ -44,13 +45,22 @@ export function isSupabaseConfigured(): boolean {
   return getServerSupabase() !== null;
 }
 
-/** Top players by personal-best WPM. */
+/**
+ * Top players by personal-best WPM.
+ *
+ * Defense-in-depth for the public ranking: `sanitizeResults` already blocks
+ * implausible WPM at write time (see `room.ts`), but rows persisted BEFORE that
+ * guard (e.g. the 3596 WPM record) still live in `scores`. Filtering reads by
+ * `MAX_PLAUSIBLE_WPM` hides those legacy outliers from the ranking without
+ * touching production data (owner-only per HANDBOOK §7.1).
+ */
 export async function getLeaderboard(limit = 25): Promise<LeaderRow[]> {
   const sb = getServerSupabase();
   if (!sb) return [];
   const { data, error } = await sb
     .from("leaderboard")
     .select("name, wpm, accuracy, errors, language, difficulty, created_at")
+    .lte("wpm", MAX_PLAUSIBLE_WPM)
     .order("wpm", { ascending: false })
     .limit(limit);
   if (error) {
@@ -60,7 +70,13 @@ export async function getLeaderboard(limit = 25): Promise<LeaderRow[]> {
   return (data as LeaderRow[]) ?? [];
 }
 
-/** Most recent finished matches. */
+/**
+ * Most recent finished matches.
+ *
+ * Same defense-in-depth as `getLeaderboard`: a match whose `winner_wpm` exceeds
+ * `MAX_PLAUSIBLE_WPM` is a legacy/forged outlier and is hidden. Matches with a
+ * null `winner_wpm` (no ranked winner) are kept.
+ */
 export async function getRecentMatches(limit = 12): Promise<MatchRow[]> {
   const sb = getServerSupabase();
   if (!sb) return [];
@@ -69,6 +85,7 @@ export async function getRecentMatches(limit = 12): Promise<MatchRow[]> {
     .select(
       "id, room_code, language, difficulty, snippet_title, player_count, winner_name, winner_wpm, finished_at"
     )
+    .or(`winner_wpm.is.null,winner_wpm.lte.${MAX_PLAUSIBLE_WPM}`)
     .order("finished_at", { ascending: false })
     .limit(limit);
   if (error) {
