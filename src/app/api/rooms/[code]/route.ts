@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, sanitizeResults, type ResultRow, type RoomRow } from "@/lib/room";
+import {
+  COUNTDOWN_MS,
+  sanitizeResults,
+  validateFinishTiming,
+  type ResultRow,
+  type RoomRow
+} from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,8 +72,23 @@ export async function POST(req: Request, { params }: { params: { code: string } 
 
     case "finish": {
       // Fronteira anti-cheat: `results` vem do cliente e alimenta o leaderboard
-      // global. Sanitiza/clampa/descarta linhas forjadas antes de persistir.
-      const results: ResultRow[] = sanitizeResults(body.results, room as RoomRow);
+      // global. Só a sala em `racing` pode terminar — responder ok:true fora disso
+      // mentiria para o cliente e esconderia ataque/bug.
+      if (room.status !== "racing")
+        return NextResponse.json({ ok: false, error: "Sala não está em corrida" }, { status: 409 });
+
+      const now = Date.now();
+      const startMs = room.start_at ? Date.parse(room.start_at) : NaN;
+      // Ainda no countdown (start_at no futuro): a corrida não pode ter terminado.
+      // Não flipa nem persiste. (start_at ausente/inválido cai adiante: a sala
+      // encerra com results vazio, sem alimentar o leaderboard.)
+      if (Number.isFinite(startMs) && now <= startMs)
+        return NextResponse.json({ ok: false, error: "Corrida ainda não começou" }, { status: 409 });
+
+      // Sanitiza valores forjados e então descarta linhas temporalmente
+      // impossíveis (WPM alto demais para o tempo real desde `start_at`).
+      const sanitized: ResultRow[] = sanitizeResults(body.results, room as RoomRow);
+      const results: ResultRow[] = validateFinishTiming(sanitized, room as RoomRow, now);
       // Conditional transition racing→finished so only the first caller persists.
       const { data: flipped } = await sb
         .from("rooms")
@@ -75,7 +96,10 @@ export async function POST(req: Request, { params }: { params: { code: string } 
         .eq("code", code)
         .eq("status", "racing")
         .select("code");
-      if (flipped && flipped.length) await persistMatch(sb, room as RoomRow, results);
+      // Perdeu a corrida da transição (outro `finish` concorrente já flipou) → 409.
+      if (!flipped || !flipped.length)
+        return NextResponse.json({ ok: false, error: "Sala não está em corrida" }, { status: 409 });
+      if (results.length) await persistMatch(sb, room as RoomRow, results);
       return NextResponse.json({ ok: true });
     }
 

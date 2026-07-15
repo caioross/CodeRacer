@@ -74,6 +74,31 @@ function validateMatchInsert(match) {
   return { valid: errors.length === 0, errors };
 }
 
+// ─── Espelho das regras de coerência temporal (src/lib/room.ts, issue #34) ────
+// `start_at` é o instante em que a DIGITAÇÃO começa (o countdown já está embutido);
+// o tempo decorrido é `now - start_at`. Teto físico de WPM = (chars/5)/elapsedMin.
+
+const CLOCK_SKEW_SLACK = 1.1;
+
+/** Espelho fiel de `plausibleWpmCeiling(startAtISO, snippetChars, now)`. */
+function plausibleWpmCeiling(startAtISO, snippetChars, now) {
+  if (!startAtISO) return 0;
+  const startMs = Date.parse(startAtISO);
+  if (!Number.isFinite(startMs)) return 0;
+  const elapsedMin = (now - startMs) / 60000;
+  if (elapsedMin <= 0) return 0; // ainda no countdown → corrida impossível
+  const chars = Math.max(0, Math.round(Number(snippetChars)) || 0);
+  return ((chars / 5) / elapsedMin) * CLOCK_SKEW_SLACK;
+}
+
+/** Espelho fiel de `validateFinishTiming(results, room, now)`. */
+function validateFinishTiming(results, room, now) {
+  if (!Array.isArray(results) || results.length === 0) return [];
+  const ceiling = plausibleWpmCeiling(room.start_at ?? null, room.snippet?.code.length ?? 0, now);
+  if (ceiling <= 0) return [];
+  return results.filter(r => r.wpm <= ceiling);
+}
+
 // ─── Framework de teste ───────────────────────────────────────────────────────
 
 let passed = 0;
@@ -188,6 +213,62 @@ console.log("\n── Ranking de resultados ────────────
   assert("winner é o de place=1", ranked[0].name === 'caio');
   assert("winner_wpm correto",    ranked[0].wpm === 85);
   assert("place=null fica por último", ranked[ranked.length - 1].name === 'bob');
+}
+
+// ─── Coerência temporal do finish (issue #34) ────────────────────────────────
+// `now` é fixo e determinístico (nada de Date.now); `start_at` é construído
+// relativo a ele. Espelha `validateFinishTiming` / `plausibleWpmCeiling`.
+
+console.log("\n── Anti-cheat: coerência temporal (validateFinishTiming) ─────────");
+{
+  const NOW = 1720000000000;
+  const iso = ms => new Date(ms).toISOString();
+  const room = (over = {}) => ({ start_at: null, snippet: { code: 'x'.repeat(300) }, ...over });
+
+  // Teto puro: 300 chars digitados em 60 s = 60 WPM; teto ≈ 60 × 1.1 = 66.
+  const teto60s = plausibleWpmCeiling(iso(NOW - 60000), 300, NOW);
+  assert("teto de 60s/300chars ≈ 66", Math.abs(teto60s - 66) < 0.5, `got ${teto60s}`);
+  assert("teto com start_at nulo → 0", plausibleWpmCeiling(null, 300, NOW) === 0);
+  assert("teto com start_at inválido → 0", plausibleWpmCeiling('não-data', 300, NOW) === 0);
+  assert("teto dentro do countdown (now <= start_at) → 0",
+    plausibleWpmCeiling(iso(NOW + 3800), 300, NOW) === 0);
+
+  // Corrida honesta de 60s: 60/45 WPM sob teto 66 → preservada intacta.
+  {
+    const honest = [legit({ name: 'caio', wpm: 60, place: 1 }), legit({ name: 'ana', wpm: 45, place: 2 })];
+    const out = validateFinishTiming(honest, room({ start_at: iso(NOW - 60000) }), NOW);
+    assert("corrida honesta de 60s preservada (2 linhas)", out.length === 2);
+    assert("WPM honesto intacto", out[0].wpm === 60 && out[1].wpm === 45);
+  }
+
+  // Finish 200 ms após o `start` (ainda no countdown): WPM 349 → array vazio.
+  {
+    const forged = [legit({ name: 'hacker', wpm: 349 })];
+    const out = validateFinishTiming(forged, room({ start_at: iso(NOW + 3800) }), NOW);
+    assert("finish no countdown com WPM 349 → descartado (vazio)", out.length === 0);
+  }
+
+  // Passado o countdown mas WPM impossível para o tempo: 349 em 10s/100chars (teto ≈132) → descartado.
+  {
+    const mixed = [legit({ name: 'real', wpm: 80, place: 1 }), legit({ name: 'hacker', wpm: 349, place: 2 })];
+    const out = validateFinishTiming(mixed, room({ start_at: iso(NOW - 10000), snippet: { code: 'y'.repeat(100) } }), NOW);
+    assert("WPM 349 impossível em 10s/100chars → descartado", out.length === 1 && out[0].name === 'real');
+  }
+
+  // start_at ausente numa sala `racing` → descarta tudo (nunca "passa tudo").
+  assert("start_at ausente → descarta tudo",
+    validateFinishTiming([legit({ wpm: 60 })], room({ start_at: null }), NOW).length === 0);
+  // snippet ausente → sem chars para calcular → descarta (defensivo).
+  assert("snippet ausente → descarta tudo",
+    validateFinishTiming([legit({ wpm: 60 })], room({ start_at: iso(NOW - 10000), snippet: null }), NOW).length === 0);
+
+  // Corrida lenta e real (90s, 200 chars → teto ≈29.3): 27/29 WPM não são descartados por arredondamento.
+  {
+    const slow = [legit({ name: 'lento', wpm: 27, place: 1 }), legit({ name: 'medio', wpm: 29, place: 2 })];
+    const out = validateFinishTiming(slow, room({ start_at: iso(NOW - 90000), snippet: { code: 'z'.repeat(200) } }), NOW);
+    assert("corrida lenta real (27/29 WPM) não descartada por arredondamento", out.length === 2);
+  }
+  assert("results vazio → vazio", validateFinishTiming([], room({ start_at: iso(NOW - 60000) }), NOW).length === 0);
 }
 
 // ─── Resultado ────────────────────────────────────────────────────────────────

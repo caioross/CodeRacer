@@ -159,6 +159,63 @@ export function sanitizeResults(
   return out;
 }
 
+/**
+ * Folga multiplicativa para clock-skew entre o relógio do servidor (no `finish`)
+ * e o instante real em que a digitação começou (`start_at`). 10% de margem para
+ * não descartar corrida honesta por diferença de relógio ou latência de rede.
+ */
+export const CLOCK_SKEW_SLACK = 1.1;
+
+/**
+ * Maior WPM fisicamente atingível nesta corrida no instante `now` (ms epoch).
+ *
+ * `start_at` é o momento em que a DIGITAÇÃO começa — o countdown já está embutido
+ * (a rota grava `Date.now() + COUNTDOWN_MS` no `start`, e o cliente só conclui a
+ * corrida quando `now >= start_at`). Logo o tempo de digitação decorrido é
+ * `now - start_at`; durante o countdown isso é ≤ 0 e a corrida ainda é impossível.
+ * Como WPM = (chars / 5) / minutos, o teto por-corrida é `(chars / 5) / elapsedMin`,
+ * com a folga `CLOCK_SKEW_SLACK`.
+ *
+ * Retorna **0** quando nada é plausível ainda: `start_at` ausente/inválido, ou
+ * `now` dentro do countdown (`now <= start_at`). Puro: recebe `now` por parâmetro
+ * (nada de `Date.now()` interno) — coberto por `scripts/validate-persistence.mjs`.
+ */
+export function plausibleWpmCeiling(
+  startAtISO: string | null,
+  snippetChars: number,
+  now: number
+): number {
+  if (!startAtISO) return 0;
+  const startMs = Date.parse(startAtISO);
+  if (!Number.isFinite(startMs)) return 0;
+  const elapsedMin = (now - startMs) / 60000;
+  if (elapsedMin <= 0) return 0; // ainda no countdown → corrida impossível
+  const chars = Math.max(0, Math.round(Number(snippetChars)) || 0);
+  return ((chars / 5) / elapsedMin) * CLOCK_SKEW_SLACK;
+}
+
+/**
+ * DESCARTA as linhas de `results` temporalmente impossíveis para esta corrida:
+ * um WPM acima do teto físico (`plausibleWpmCeiling`) não pode ter sido digitado
+ * no tempo decorrido desde `start_at`. Ao contrário do clamp, linhas impossíveis
+ * são REMOVIDAS — clampar premiaria o trapaceiro com o valor máximo.
+ *
+ * Se a corrida ainda é impossível (sem `start_at`/`snippet`, ou `now` no
+ * countdown), o teto é 0 e **todas** as linhas são descartadas (nunca "passa
+ * tudo"). Roda depois de `sanitizeResults` na rota `finish`; recebe `now` por
+ * parâmetro. Puro e determinístico — coberto por `scripts/validate-persistence.mjs`.
+ */
+export function validateFinishTiming(
+  results: ResultRow[],
+  room: Pick<RoomRow, "start_at" | "snippet">,
+  now: number
+): ResultRow[] {
+  if (!Array.isArray(results) || results.length === 0) return [];
+  const ceiling = plausibleWpmCeiling(room.start_at ?? null, room.snippet?.code.length ?? 0, now);
+  if (ceiling <= 0) return []; // corrida impossível/sem dado → nada plausível
+  return results.filter(r => r.wpm <= ceiling);
+}
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",
