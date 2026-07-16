@@ -22,7 +22,8 @@ export function CodeEditor({
   language,
   target,
   onAbandon,
-  errorPulse = 0
+  errorPulse = 0,
+  finishedPlaceholder = "✅ terminou! veja a posição dos outros..."
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -35,6 +36,9 @@ export function CodeEditor({
   /** Bumps on every keystroke that produced a wrong char (issue #10). Each
    *  increment fires the error feedback: shake (motion) + red flash + margin icon. */
   errorPulse?: number;
+  /** Copy do placeholder pós-término — o default é o multiplayer; o modo
+   *  Practice (issue #25, sem sala) passa uma versão solo coerente. */
+  finishedPlaceholder?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
@@ -322,7 +326,7 @@ export function CodeEditor({
             wrap={wrap ? "soft" : "off"}
             className="absolute inset-0 resize-none bg-transparent px-4 py-4 text-transparent caret-neon-green outline-none placeholder:text-text-dim disabled:opacity-50"
             style={{ ...sharedStyle, caretColor: "#00ff88", color: "transparent" }}
-            placeholder={disabled ? "✅ terminou! veja a posição dos outros..." : "$ comece a digitar..."}
+            placeholder={disabled ? finishedPlaceholder : "$ comece a digitar..."}
           />
         </div>
       </div>
