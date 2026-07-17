@@ -218,6 +218,97 @@ const debounceLen = 112;
 const wpmDebounce = calcWpm(debounceLen, 60_000); // (112/5)/1 ≈ 22
 assert("snippet debounce 112 chars, 60 s → ~22 WPM", wpmDebounce, 22);
 
+// ─── Indentação por Tab (issue #41) ──────────────────────────────────────────
+// Espelho de src/lib/indent.ts (indentEdit). Se a lógica mudar lá, atualize aqui.
+
+function spaceRunAt(text, offset) {
+  let n = 0;
+  while (offset + n < text.length && text[offset + n] === " ") n++;
+  return n;
+}
+
+function indentEdit(value, target, selStart, selEnd = selStart) {
+  const noop = { text: value, caret: selStart };
+  if (selStart < 0 || selStart > value.length || selEnd < selStart) return noop;
+  const lineStart = value.lastIndexOf("\n", selStart - 1) + 1;
+  const beforeCaret = value.slice(lineStart, selStart);
+  if (!/^ *$/.test(beforeCaret)) return noop;
+  let lineIdx = 0;
+  for (let i = 0; i < lineStart; i++) if (value[i] === "\n") lineIdx++;
+  let ti = 0;
+  for (let l = 0; l < lineIdx; l++) {
+    const nx = target.indexOf("\n", ti);
+    if (nx === -1) return noop;
+    ti = nx + 1;
+  }
+  const expected = spaceRunAt(target, ti);
+  const remaining = expected - beforeCaret.length;
+  if (remaining <= 0) return noop;
+  const ins = " ".repeat(remaining);
+  return {
+    text: value.slice(0, selStart) + ins + value.slice(selEnd),
+    caret: selStart + ins.length
+  };
+}
+
+/** Igualdade estrita (string/número), para além do `assert` com tolerância. */
+function assertEq(label, actual, expected) {
+  const ok = actual === expected;
+  if (ok) {
+    console.log(`  ✓ ${label}`);
+    passed++;
+  } else {
+    console.error(`  ✗ ${label}`);
+    console.error(`    esperado: ${JSON.stringify(expected)}, obtido: ${JSON.stringify(actual)}`);
+    failed++;
+  }
+}
+
+console.log("\n── Indentação por Tab (#41) ─────────────────────────────────────");
+
+// Snippet do repro (O Iniciante, Python/Fácil): linha 2 indenta 4 espaços.
+const py = "def soma(numeros):\n    return sum(numeros)";
+const l1 = "def soma(numeros):\n"; // caret no início da linha 2 = offset 19
+
+// Caso 25: caret no início da linha 2 → insere exatamente os 4 espaços do target
+const c25 = indentEdit(l1, py, 19);
+assertEq("Tab no início da linha 2 → insere 4 espaços", c25.text, l1 + "    ");
+assert("caret após os 4 espaços inseridos", c25.caret, 23);
+
+// Caso 26: os espaços inseridos batem o target → não geram erro (honestidade)
+assertEq("indentação inserida é 100% correta vs target",
+  correctChars(c25.text, py), c25.text.length);
+
+// Caso 27: erro upstream (value não é prefixo de target) → ainda indenta certo.
+// Antes o índice cru quebrava aqui — este é o coração do bug.
+const errUp = "def somaX(numeros):\n"; // 'X' extra desloca o offset cru
+const c27 = indentEdit(errUp, py, errUp.length);
+assertEq("com erro anterior na linha 1, Tab ainda insere 4 espaços",
+  c27.text, errUp + "    ");
+
+// Caso 28: linha sem indentação (linha 1) → no-op (fim do fallback tóxico "  ")
+const c28 = indentEdit("", py, 0);
+assertEq("linha 1 (indent 0) → não insere nada", c28.text, "");
+assert("caret preservado no no-op", c28.caret, 0);
+
+// Caso 29: já digitou 2 dos 4 espaços → completa só os 2 que faltam
+const half = "def soma(numeros):\n  "; // 2 espaços já na linha 2
+const c29 = indentEdit(half, py, half.length);
+assertEq("2 espaços já digitados → insere só os 2 restantes", c29.text, l1 + "    ");
+
+// Caso 30: caret no meio de código (não-espaço antes) → no-op (não polui)
+const c30 = indentEdit("def soma(numeros):", py, 5);
+assertEq("Tab no meio do código → no-op", c30.text, "def soma(numeros):");
+
+// Caso 31: target com menos linhas que a linha lógica atual → no-op seguro
+const c31 = indentEdit("a\nb\n", "x", 4);
+assertEq("linha além do target → no-op", c31.text, "a\nb\n");
+
+// Caso 32: seleção é substituída pela indentação esperada
+const sel = "def soma(numeros):\nZZ";
+const c32 = indentEdit(sel, py, 19, 21); // seleciona "ZZ"
+assertEq("seleção substituída pelos 4 espaços", c32.text, l1 + "    ");
+
 // ─── Resultado final ─────────────────────────────────────────────────────────
 
 console.log("\n─────────────────────────────────────────────────────────────────");
