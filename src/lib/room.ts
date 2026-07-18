@@ -23,6 +23,8 @@ export interface RoomRow {
   snippet: RoomSnippet | null;
   start_at: string | null; // ISO; moment typing begins
   results: ResultRow[] | null;
+  /** playerIds removidos pelo líder — verdade durável da expulsão (ver #39). */
+  kicked_ids: string[];
   created_at: string;
   updated_at: string;
 }
@@ -157,6 +159,44 @@ export function sanitizeResults(
     });
   }
   return out;
+}
+
+// ─── Autoridade de expulsão (fronteira pura, espelhada no validator) ──────────
+// Kick trafegava só por broadcast peer-to-peer, sem autoridade — qualquer
+// assinante do canal expulsava qualquer um (#39). A verdade agora vive no
+// servidor: a rota valida `canKick` e registra o alvo em `rooms.kicked_ids`; a
+// vítima descobre a remoção pela subscription postgres_changes, NUNCA por
+// broadcast. Mitiga o vetor anônimo; a fechadura forte (token por jogador) é #6.
+
+/**
+ * Só o líder legítimo da sala (verdade = `room.leader_id`) pode remover um
+ * jogador, e o alvo precisa ser um id não-vazio. Puro e determinístico —
+ * coberto por `scripts/validate-persistence.mjs`.
+ */
+export function canKick(
+  room: Pick<RoomRow, "leader_id"> | null | undefined,
+  playerId: string,
+  targetId: string
+): boolean {
+  return (
+    !!room &&
+    typeof playerId === "string" &&
+    room.leader_id === playerId &&
+    typeof targetId === "string" &&
+    targetId.trim().length > 0
+  );
+}
+
+/**
+ * Acrescenta `targetId` à lista durável de expulsos de forma idempotente (sem
+ * duplicar). Alvo vazio ou já presente → lista de origem inalterada (no-op
+ * seguro). Puro e determinístico.
+ */
+export function addKickedId(current: string[] | null | undefined, targetId: string): string[] {
+  const base = Array.isArray(current) ? current.filter(x => typeof x === "string") : [];
+  const t = typeof targetId === "string" ? targetId.trim() : "";
+  if (!t || base.includes(t)) return base;
+  return [...base, t];
 }
 
 const PLAYER_COLORS = [

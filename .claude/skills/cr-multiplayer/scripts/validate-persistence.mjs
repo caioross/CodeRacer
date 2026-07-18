@@ -61,6 +61,27 @@ function validateMatchInsert(match) {
   return { valid: errors.length === 0, errors };
 }
 
+// ─── Espelho da autoridade de expulsão (src/lib/room.ts, issue #39) ───────────
+
+/** Espelho de `canKick(room, playerId, targetId)`. */
+function canKick(room, playerId, targetId) {
+  return (
+    !!room &&
+    typeof playerId === 'string' &&
+    room.leader_id === playerId &&
+    typeof targetId === 'string' &&
+    targetId.trim().length > 0
+  );
+}
+
+/** Espelho de `addKickedId(current, targetId)` — dedupe idempotente. */
+function addKickedId(current, targetId) {
+  const base = Array.isArray(current) ? current.filter(x => typeof x === 'string') : [];
+  const t = typeof targetId === 'string' ? targetId.trim() : '';
+  if (!t || base.includes(t)) return base;
+  return [...base, t];
+}
+
 // ─── Framework de teste ───────────────────────────────────────────────────────
 
 let passed = 0;
@@ -181,6 +202,35 @@ const winner = ranked[0];
 assert("winner é o de place=1", winner.name === "caio");
 assert("winner_wpm correto",    winner.wpm  === 85);
 assert("não-finalizado fica por último", ranked[ranked.length - 1].name === "bob");
+
+// ─── Autoridade de expulsão (kick) — issue #39 ───────────────────────────────
+
+console.log("\n── canKick: só o líder legítimo expulsa ─────────────────────────");
+{
+  const ROOM39 = { leader_id: 'leader-1' };
+  assert("líder remove um jogador → autorizado", canKick(ROOM39, 'leader-1', 'victim-2') === true);
+  assert("não-líder tenta remover → rejeitado (rota devolve 403)",
+    canKick(ROOM39, 'rando-9', 'victim-2') === false);
+  assert("não-líder tenta expulsar o próprio líder → rejeitado",
+    canKick(ROOM39, 'rando-9', 'leader-1') === false);
+  assert("alvo vazio → rejeitado (rota devolve 400)", canKick(ROOM39, 'leader-1', '') === false);
+  assert("alvo só espaços → rejeitado", canKick(ROOM39, 'leader-1', '   ') === false);
+  assert("room ausente → rejeitado", canKick(null, 'leader-1', 'victim-2') === false);
+  assert("playerId não-string → rejeitado", canKick(ROOM39, undefined, 'victim-2') === false);
+}
+
+console.log("\n── addKickedId: dedupe idempotente, estado seguro ───────────────");
+{
+  assert("acrescenta alvo novo", JSON.stringify(addKickedId([], 'v1')) === JSON.stringify(['v1']));
+  assert("preserva os já existentes",
+    JSON.stringify(addKickedId(['v1'], 'v2')) === JSON.stringify(['v1', 'v2']));
+  assert("alvo já presente → lista inalterada (idempotente)",
+    JSON.stringify(addKickedId(['v1', 'v2'], 'v1')) === JSON.stringify(['v1', 'v2']));
+  assert("alvo vazio → lista inalterada (no-op seguro)",
+    JSON.stringify(addKickedId(['v1'], '')) === JSON.stringify(['v1']));
+  assert("current null → parte de lista vazia", JSON.stringify(addKickedId(null, 'v1')) === JSON.stringify(['v1']));
+  assert("aplica trim ao alvo", JSON.stringify(addKickedId([], '  v9  ')) === JSON.stringify(['v9']));
+}
 
 // ─── Resultado ────────────────────────────────────────────────────────────────
 

@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, sanitizeResults, type ResultRow, type RoomRow } from "@/lib/room";
+import {
+  COUNTDOWN_MS,
+  addKickedId,
+  canKick,
+  sanitizeResults,
+  type ResultRow,
+  type RoomRow
+} from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,11 +86,27 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       return NextResponse.json({ ok: true });
     }
 
+    case "kick": {
+      // Autoridade de expulsão no servidor (#39): só o líder remove, e a saída
+      // da vítima passa a vir de `kicked_ids` (postgres_changes), nunca de um
+      // broadcast confiado cegamente. Escopo honesto: mitiga o kick anônimo
+      // trivial — não dá autoridade forte (leader_id ainda é spoofável, ver #6).
+      if (!isLeader) return leaderOnly();
+      const targetId = String(body?.targetId || "").trim();
+      // `canKick` é a verdade da autorização (espelhada em validate-persistence).
+      if (!canKick(room as RoomRow, playerId, targetId))
+        return NextResponse.json({ ok: false, error: "Alvo inválido" }, { status: 400 });
+      const kicked = addKickedId(room.kicked_ids, targetId); // idempotente
+      await sb.from("rooms").update({ kicked_ids: kicked }).eq("code", code);
+      return NextResponse.json({ ok: true });
+    }
+
     case "reset": {
       if (!isLeader) return leaderOnly();
+      // Nova partida limpa a lista de expulsos — não vaza estado entre matches.
       await sb
         .from("rooms")
-        .update({ status: "lobby", snippet: null, start_at: null, results: null })
+        .update({ status: "lobby", snippet: null, start_at: null, results: null, kicked_ids: [] })
         .eq("code", code);
       return NextResponse.json({ ok: true });
     }

@@ -191,24 +191,23 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setReadyMap(prev => ({ ...prev, [m.id as string]: !!m.ready }));
       });
 
-      // Leader kicked someone — if it's me, leave the room.
-      channel.on("broadcast", { event: "kick" }, ({ payload }) => {
-        const targetId = (payload as { id?: string })?.id;
-        if (targetId && targetId === id) {
-          try {
-            sessionStorage.removeItem(SESSION_KEY(code));
-          } catch {}
-          fail("Você foi removido da sala pelo líder");
-          onLeaveRef.current?.();
-        }
-      });
-
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
         payload => {
           const next = payload.new as RoomRow;
-          if (next && next.code) setRoom(next);
+          if (!next || !next.code) return;
+          // Expulsão com autoridade (#39): a saída só é definitiva quando o
+          // servidor registra meu id em `kicked_ids` — nunca por broadcast.
+          if (Array.isArray(next.kicked_ids) && next.kicked_ids.includes(id)) {
+            try {
+              sessionStorage.removeItem(SESSION_KEY(code));
+            } catch {}
+            fail("Você foi removido da sala pelo líder");
+            onLeaveRef.current?.();
+            return;
+          }
+          setRoom(next);
         }
       );
 
@@ -428,12 +427,15 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     ch.send({ type: "broadcast", event: "ready", payload: { id, ready } });
   }, []);
 
-  // Leader removes a player: broadcast a kick the target obeys by leaving.
-  const kick = useCallback((targetId: string) => {
-    const ch = channelRef.current;
-    if (!ch || !targetId) return;
-    ch.send({ type: "broadcast", event: "kick", payload: { id: targetId } });
-  }, []);
+  // Leader removes a player via the server (#39): the API checks authority and
+  // records the target in `kicked_ids`; the victim leaves on postgres_changes.
+  const kick = useCallback(
+    (targetId: string) => {
+      if (!targetId) return;
+      return postAction("kick", { targetId });
+    },
+    [postAction]
+  );
 
   const updateSettings = useCallback(
     (settings: Record<string, unknown>) => postAction("settings", { settings }),
