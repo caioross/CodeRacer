@@ -104,7 +104,7 @@ export const MAX_NAME_LEN = 20;
 export const ABSOLUTE_MAX_PLAYERS = 12;
 
 /** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
-function clampInt(n: unknown, min: number, max: number): number {
+export function clampInt(n: unknown, min: number, max: number): number {
   const v = Math.round(Number(n));
   if (!Number.isFinite(v)) return min;
   return Math.max(min, Math.min(max, v));
