@@ -234,8 +234,8 @@ export function HomeView() {
         <div className="text-center mb-10 md:mb-12">
           {/* Real, single H1 for SEO — visually replaced by the animated logo. */}
           <h1 className="sr-only">
-            CodeRacer — corrida de digitação multiplayer para programadores. Digite código
-            mais rápido que seus amigos, sem cadastro.
+            CodeRacer — corrida de digitação para programadores: treine sozinho ou jogue
+            multiplayer com amigos, digitando código mais rápido, sem cadastro.
           </h1>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -254,8 +254,8 @@ export function HomeView() {
             className="mt-6 text-text-muted text-base md:text-lg max-w-2xl mx-auto text-balance"
           >
             <span className="text-neon-green">// </span>
-            Crie uma sala, manda o link pros amigos e quem digita o código mais rápido leva.
-            Sem cadastro, sem firula.
+            Digite código de verdade — treine sozinho ou crie uma sala e chame os amigos.
+            Quem for mais rápido leva. Sem cadastro, sem firula.
           </motion.p>
 
           <motion.div
