@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, sanitizeResults, type ResultRow, type RoomRow } from "@/lib/room";
+import {
+  COUNTDOWN_MS,
+  buildMatchRow,
+  buildScoreRows,
+  sanitizeResults,
+  type ResultRow,
+  type RoomRow
+} from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,37 +110,11 @@ export async function POST(req: Request, { params }: { params: { code: string } 
 // Persist a finished match + scores for the leaderboard (best-effort).
 async function persistMatch(sb: SupabaseClient, room: RoomRow, results: ResultRow[]) {
   try {
-    if (!results.length) return;
-    const ranked = [...results].sort((a, b) => (a.place || 99) - (b.place || 99));
-    const winner = ranked[0];
-    const { data: match } = await sb
-      .from("matches")
-      .insert({
-        room_code: room.code,
-        language: room.language,
-        difficulty: room.difficulty,
-        snippet_title: room.snippet?.title || null,
-        player_count: results.length,
-        winner_name: winner?.name || null,
-        winner_wpm: winner ? Math.round(winner.wpm) || 0 : null,
-        finished_at: new Date().toISOString()
-      })
-      .select("id")
-      .single();
+    const matchRow = buildMatchRow(room, results, new Date().toISOString());
+    if (!matchRow) return; // sem resultado → nenhuma `matches` órfã
+    const { data: match } = await sb.from("matches").insert(matchRow).select("id").single();
     if (!match) return;
-    await sb.from("scores").insert(
-      results.map(r => ({
-        match_id: match.id,
-        name: r.name,
-        language: room.language,
-        difficulty: room.difficulty,
-        wpm: Math.round(r.wpm) || 0,
-        accuracy: Math.round(r.accuracy) || 0,
-        errors: Math.round(r.errors) || 0,
-        place: r.place || null,
-        finished: !!r.finished
-      }))
-    );
+    await sb.from("scores").insert(buildScoreRows(match.id, room, results));
   } catch (e) {
     console.warn("[persistMatch]", (e as Error).message);
   }

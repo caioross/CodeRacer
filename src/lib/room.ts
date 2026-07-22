@@ -159,6 +159,82 @@ export function sanitizeResults(
   return out;
 }
 
+// ─── Montagem das linhas do leaderboard (matches/scores) ─────────────────────
+// A API só orquestra os `insert`; o mapeamento `results → linhas` vive aqui,
+// puro e determinístico, para ser coberto por teste (o `finished_at` entra como
+// parâmetro justamente para manter as funções determinísticas).
+
+/** Linha de `matches` (sem `id`, gerado pelo banco). */
+export interface MatchInsert {
+  room_code: string;
+  language: LangId;
+  difficulty: Difficulty;
+  snippet_title: string | null;
+  player_count: number;
+  winner_name: string | null;
+  winner_wpm: number | null;
+  finished_at: string;
+}
+
+/** Linha de `scores` — um score por jogador da partida. */
+export interface ScoreInsert {
+  match_id: string;
+  name: string;
+  language: LangId;
+  difficulty: Difficulty;
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  place: number | null;
+  finished: boolean;
+}
+
+/**
+ * Monta a linha de `matches` a partir dos `results` já sanitizados.
+ * Vencedor = menor `place` (ausente/0 cai no fallback 99, atrás de qualquer
+ * colocado). Retorna `null` quando não há resultado — assim nenhuma `matches`
+ * órfã é escrita e nenhum score é gerado.
+ */
+export function buildMatchRow(
+  room: RoomRow,
+  results: ResultRow[],
+  finishedAt: string
+): MatchInsert | null {
+  if (!results.length) return null;
+  const ranked = [...results].sort((a, b) => (a.place || 99) - (b.place || 99));
+  const winner = ranked[0];
+  return {
+    room_code: room.code,
+    language: room.language,
+    difficulty: room.difficulty,
+    snippet_title: room.snippet?.title || null,
+    player_count: results.length,
+    winner_name: winner?.name || null,
+    // `|| 0` cobre NaN/-0: um WPM não-numérico vira 0, nunca `NaN` no banco.
+    winner_wpm: winner ? Math.round(winner.wpm) || 0 : null,
+    finished_at: finishedAt
+  };
+}
+
+/** Monta as linhas de `scores` da partida (uma por resultado, na ordem recebida). */
+export function buildScoreRows(
+  matchId: string,
+  room: RoomRow,
+  results: ResultRow[]
+): ScoreInsert[] {
+  return results.map(r => ({
+    match_id: matchId,
+    name: r.name,
+    language: room.language,
+    difficulty: room.difficulty,
+    wpm: Math.round(r.wpm) || 0,
+    accuracy: Math.round(r.accuracy) || 0,
+    errors: Math.round(r.errors) || 0,
+    place: r.place || null,
+    finished: !!r.finished
+  }));
+}
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",
