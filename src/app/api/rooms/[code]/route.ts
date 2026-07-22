@@ -6,6 +6,8 @@ import {
   COUNTDOWN_MS,
   addKickedId,
   canKick,
+  resolveDifficulty,
+  resolveLang,
   sanitizeResults,
   type ResultRow,
   type RoomRow
@@ -49,11 +51,27 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       if (room.status !== "lobby")
         return NextResponse.json({ ok: false, error: "Partida já começou" }, { status: 409 });
       const s = body.settings || {};
+      // Allowlist de fronteira: presente inválido → 400; ausente mantém o valor
+      // atual da sala. Mesma fonte de verdade da criação (src/lib/room.ts).
+      const lang = resolveLang(s.language, room.language as RoomRow["language"]);
+      if (!lang.ok) {
+        return NextResponse.json(
+          { ok: false, error: "language inválido — use uma das linguagens suportadas" },
+          { status: 400 }
+        );
+      }
+      const difficulty = resolveDifficulty(s.difficulty, room.difficulty as RoomRow["difficulty"]);
+      if (!difficulty.ok) {
+        return NextResponse.json(
+          { ok: false, error: "difficulty inválido — use easy, medium ou hard" },
+          { status: 400 }
+        );
+      }
       await sb
         .from("rooms")
         .update({
-          language: s.language || room.language,
-          difficulty: s.difficulty || room.difficulty,
+          language: lang.value,
+          difficulty: difficulty.value,
           max_players: Math.min(Math.max(Number(s.maxPlayers) || room.max_players, 2), 12)
         })
         .eq("code", code);
@@ -97,17 +115,33 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       if (!canKick(room as RoomRow, playerId, targetId))
         return NextResponse.json({ ok: false, error: "Alvo inválido" }, { status: 400 });
       const kicked = addKickedId(room.kicked_ids, targetId); // idempotente
-      await sb.from("rooms").update({ kicked_ids: kicked }).eq("code", code);
+      // Falha alto: enquanto a migração 0005 não for aplicada a coluna não existe,
+      // e um `ok: true` silencioso faria o líder crer que expulsou alguém.
+      const { error: kickErr } = await sb
+        .from("rooms")
+        .update({ kicked_ids: kicked })
+        .eq("code", code);
+      if (kickErr)
+        return NextResponse.json(
+          { ok: false, error: "Expulsão indisponível — migração pendente" },
+          { status: 503 }
+        );
       return NextResponse.json({ ok: true });
     }
 
     case "reset": {
       if (!isLeader) return leaderOnly();
-      // Nova partida limpa a lista de expulsos — não vaza estado entre matches.
+      // O reset da partida NÃO pode depender da coluna nova: entre este deploy e a
+      // aplicação da 0005 pelo dono, `kicked_ids` não existe e um update único
+      // falharia inteiro — "jogar de novo" morreria em silêncio (as rotas não
+      // conferem o `error` do update). Statements separados: o reset sempre vale.
       await sb
         .from("rooms")
-        .update({ status: "lobby", snippet: null, start_at: null, results: null, kicked_ids: [] })
+        .update({ status: "lobby", snippet: null, start_at: null, results: null })
         .eq("code", code);
+      // Nova partida limpa a lista de expulsos — não vaza estado entre matches.
+      // Best-effort: inerte enquanto a 0005 não estiver aplicada.
+      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
       return NextResponse.json({ ok: true });
     }
 

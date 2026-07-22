@@ -1,4 +1,4 @@
--- 0004_room_kicked_ids.sql
+-- 0005_room_kicked_ids.sql
 -- Issue #39 — Autoridade de expulsão durável.
 --
 -- O kick trafegava só por broadcast peer-to-peer, sem autoridade de servidor:

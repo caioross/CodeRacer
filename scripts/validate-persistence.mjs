@@ -63,6 +63,30 @@ function sanitizeResults(input, room) {
   return out;
 }
 
+// ─── Espelho da allowlist de settings (src/lib/room.ts) ───────────────────────
+// A fonte de verdade é `LANGUAGES`/`DIFFICULTIES` em src/lib/languages.ts. Este
+// espelho segue o padrão do arquivo (sem import de TS) — se as listas mudarem lá,
+// atualize aqui.
+
+const LANG_IDS = new Set([
+  'javascript', 'typescript', 'python', 'java', 'csharp', 'cpp', 'go',
+  'rust', 'sql', 'bash', 'ruby', 'php', 'kotlin', 'swift'
+]);
+const DIFFICULTY_IDS = new Set(['easy', 'medium', 'hard']);
+
+const isValidLang = x => typeof x === 'string' && LANG_IDS.has(x);
+const isValidDifficulty = x => typeof x === 'string' && DIFFICULTY_IDS.has(x);
+
+/** Ausente (`null`/`undefined`/`''`) → fallback; válido → valor; inválido → { ok:false }. */
+function resolveLang(raw, fallback) {
+  if (raw == null || raw === '') return { ok: true, value: fallback };
+  return isValidLang(raw) ? { ok: true, value: raw } : { ok: false };
+}
+function resolveDifficulty(raw, fallback) {
+  if (raw == null || raw === '') return { ok: true, value: fallback };
+  return isValidDifficulty(raw) ? { ok: true, value: raw } : { ok: false };
+}
+
 /** Valida o objeto de match (linha na tabela `matches`). */
 function validateMatchInsert(match) {
   const errors = [];
@@ -238,6 +262,38 @@ console.log("\n── addKickedId: dedupe idempotente, estado seguro ───�
     JSON.stringify(addKickedId(['v1'], '')) === JSON.stringify(['v1']));
   assert("current null → parte de lista vazia", JSON.stringify(addKickedId(null, 'v1')) === JSON.stringify(['v1']));
   assert("aplica trim ao alvo", JSON.stringify(addKickedId([], '  v9  ')) === JSON.stringify(['v9']));
+}
+
+// ─── Allowlist de settings (issue #35: language/difficulty na fronteira) ──────
+
+console.log("\n── Allowlist de language ────────────────────────────────────────");
+{
+  assert("linguagem válida passa preservada", resolveLang('rust', 'javascript').value === 'rust');
+  assert("todas as 14 linguagens suportadas são válidas",
+    ['javascript','typescript','python','java','csharp','cpp','go','rust','sql','bash','ruby','php','kotlin','swift']
+      .every(isValidLang));
+  assert("linguagem inventada → rejeitada (400)", resolveLang('brainfuck', 'javascript').ok === false);
+  assert("payload gigante → rejeitado (storage abuse)",
+    resolveLang('x'.repeat(2_000_000), 'javascript').ok === false);
+  assert("ausente (undefined) → cai no default", resolveLang(undefined, 'javascript').value === 'javascript');
+  assert("null → cai no default", resolveLang(null, 'javascript').value === 'javascript');
+  assert("string vazia → cai no default", resolveLang('', 'javascript').value === 'javascript');
+  assert("ausente na action settings → mantém o valor atual da sala",
+    resolveLang(undefined, 'python').value === 'python');
+  assert("não-string (número) → rejeitado", resolveLang(42, 'javascript').ok === false);
+}
+
+console.log("\n── Allowlist de difficulty ──────────────────────────────────────");
+{
+  assert("easy/medium/hard válidos",
+    isValidDifficulty('easy') && isValidDifficulty('medium') && isValidDifficulty('hard'));
+  assert("dificuldade válida passa preservada", resolveDifficulty('hard', 'medium').value === 'hard');
+  assert("dificuldade inventada → rejeitada (400)", resolveDifficulty('impossible', 'medium').ok === false);
+  assert("ausente → cai no default", resolveDifficulty(undefined, 'medium').value === 'medium');
+  assert("string vazia → cai no default", resolveDifficulty('', 'medium').value === 'medium');
+  assert("ausente na action settings → mantém o valor atual da sala",
+    resolveDifficulty(undefined, 'hard').value === 'hard');
+  assert("case-sensitive: 'Easy' → rejeitado", resolveDifficulty('Easy', 'medium').ok === false);
 }
 
 // ─── Resultado ────────────────────────────────────────────────────────────────
