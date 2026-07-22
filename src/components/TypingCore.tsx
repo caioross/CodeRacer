@@ -5,6 +5,12 @@ import { motion } from "framer-motion";
 import { Target, Timer, Zap } from "lucide-react";
 import { CodeDisplay } from "./CodeDisplay";
 import { CodeEditor } from "./CodeEditor";
+import {
+  countCorrectChars,
+  computeWpm,
+  computeAccuracy,
+  computeProgress
+} from "@/lib/metrics";
 
 // Núcleo de digitação extraído 1:1 de Race.tsx (issue #25): estados, métricas
 // (WPM/precisão/progresso/erros), handleInput, anti-paste e o card de stats —
@@ -61,21 +67,14 @@ export function TypingCore({
   const clockNow = finishedAt ?? now;
   const elapsedMs = startedAt == null ? 0 : Math.max(0, clockNow - startedAt);
   const elapsedMin = elapsedMs / 60000;
-  const correctChars = useMemo(() => {
-    let c = 0;
-    for (let i = 0; i < typed.length; i++) if (typed[i] === code[i]) c++;
-    return c;
-  }, [typed, code]);
-  // WPM: standard ~5 chars per word
-  const wpm = elapsedMin > 0.001 ? Math.round((correctChars / 5) / elapsedMin) : 0;
-  // Precisão honesta (issue #20): 100% só com zero erros cometidos. Com ≥1 erro,
-  // usa floor e teto de 99% para nunca contradizer o cartão "Erros (total)".
-  // errors > 0 garante totalKeystrokes > 0 (não há erro sem tecla), sem divisão por zero.
-  const accuracy =
-    errors === 0
-      ? 100
-      : Math.max(0, Math.min(99, Math.floor((1 - errors / totalKeystrokes) * 100)));
-  const progress = code.length === 0 ? 0 : Math.min(1, typed.length / code.length);
+  // Fonte única de verdade das métricas (issue #32, já na main): funções puras em
+  // `@/lib/metrics`, as mesmas que os testes de honestidade pinam. `correctChars`
+  // segue no `useMemo` para não recontar o loop char-a-char a cada re-render
+  // (área sagrada, HANDBOOK §2).
+  const correctChars = useMemo(() => countCorrectChars(typed, code), [typed, code]);
+  const wpm = computeWpm(correctChars, elapsedMin);
+  const accuracy = computeAccuracy(errors, totalKeystrokes);
+  const progress = computeProgress(typed.length, code.length);
 
   // Stream progress to server (throttled implicitly by react re-renders on typed change)
   useEffect(() => {

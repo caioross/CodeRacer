@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
+import { indentEdit } from "@/lib/indent";
 import { isMuted, playKey, setMuted } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 
@@ -131,8 +132,9 @@ export function CodeEditor({
     if (gutterRef.current) gutterRef.current.scrollTop = st;
   }
 
-  // Tab indents like a real editor (inserts the snippet's spaces at the caret)
-  // instead of moving focus to the next field.
+  // Tab preenche a indentação que o `target` espera na linha atual (em vez de
+  // mover o foco). A lógica pura vive em `@/lib/indent` (`indentEdit`), imune a
+  // erros anteriores do jogador e sem o antigo fallback tóxico de 2 espaços.
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Tab") return;
     e.preventDefault();
@@ -141,16 +143,11 @@ export function CodeEditor({
     if (!ta) return;
     const start = ta.selectionStart ?? value.length;
     const end = ta.selectionEnd ?? start;
-    let ins = "";
-    let k = start;
-    while (k < target.length && target[k] === " ") {
-      ins += " ";
-      k++;
-    }
-    if (!ins) ins = "  ";
-    pendingCaret.current = start + ins.length;
+    const { text, caret } = indentEdit(value, target, start, end);
+    if (text === value) return; // nada a inserir — sem re-render nem mexer no caret
+    pendingCaret.current = caret;
     playKey();
-    onChange(value.slice(0, start) + ins + value.slice(end));
+    onChange(text);
   }
 
   function toggleSound() {

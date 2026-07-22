@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
-import { COUNTDOWN_MS, sanitizeResults, type ResultRow, type RoomRow } from "@/lib/room";
+import {
+  COUNTDOWN_MS,
+  resolveDifficulty,
+  resolveLang,
+  sanitizeResults,
+  type ResultRow,
+  type RoomRow
+} from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,11 +49,27 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       if (room.status !== "lobby")
         return NextResponse.json({ ok: false, error: "Partida já começou" }, { status: 409 });
       const s = body.settings || {};
+      // Allowlist de fronteira: presente inválido → 400; ausente mantém o valor
+      // atual da sala. Mesma fonte de verdade da criação (src/lib/room.ts).
+      const lang = resolveLang(s.language, room.language as RoomRow["language"]);
+      if (!lang.ok) {
+        return NextResponse.json(
+          { ok: false, error: "language inválido — use uma das linguagens suportadas" },
+          { status: 400 }
+        );
+      }
+      const difficulty = resolveDifficulty(s.difficulty, room.difficulty as RoomRow["difficulty"]);
+      if (!difficulty.ok) {
+        return NextResponse.json(
+          { ok: false, error: "difficulty inválido — use easy, medium ou hard" },
+          { status: 400 }
+        );
+      }
       await sb
         .from("rooms")
         .update({
-          language: s.language || room.language,
-          difficulty: s.difficulty || room.difficulty,
+          language: lang.value,
+          difficulty: difficulty.value,
           max_players: Math.min(Math.max(Number(s.maxPlayers) || room.max_players, 2), 12)
         })
         .eq("code", code);

@@ -1,6 +1,6 @@
 // Shared room types + constants for the realtime (Supabase) multiplayer.
 // Safe to import from both server (API routes) and client.
-import type { Difficulty, LangId } from "./languages";
+import { DIFFICULTIES, LANGUAGES, type Difficulty, type LangId } from "./languages";
 
 export type RoomStatus = "lobby" | "racing" | "finished";
 
@@ -90,6 +90,47 @@ export interface LivePlayer {
 
 export const COUNTDOWN_MS = 4000;
 
+// ─── Allowlist de settings (fronteira de criação/ajuste de sala) ──────────────
+// `language`/`difficulty` chegam como string crua do cliente e são copiados para
+// `matches`/`scores` (leaderboard global público). Sem allowlist, um POST direto
+// injeta dimensões arbitrárias no ranking e grava payloads sem teto de tamanho.
+// A fonte de verdade é `src/lib/languages.ts` — nunca uma segunda lista.
+
+const LANG_IDS: ReadonlySet<string> = new Set(LANGUAGES.map(l => l.id));
+const DIFFICULTY_IDS: ReadonlySet<string> = new Set(DIFFICULTIES.map(d => d.id));
+
+/** `true` se `x` é um id de linguagem suportada. Puro e testável. */
+export function isValidLang(x: unknown): x is LangId {
+  return typeof x === "string" && LANG_IDS.has(x);
+}
+
+/** `true` se `x` é `easy` | `medium` | `hard`. Puro e testável. */
+export function isValidDifficulty(x: unknown): x is Difficulty {
+  return typeof x === "string" && DIFFICULTY_IDS.has(x);
+}
+
+/** Resolução de um campo de fronteira: `ok:false` sinaliza 400 para a rota. */
+export type FieldResolution<T> = { ok: true; value: T } | { ok: false };
+
+/**
+ * Política de fronteira compartilhada pelas duas rotas de sala: campo ausente
+ * (`undefined`/`null`/`""`) cai no `fallback` (não quebra o fluxo legítimo);
+ * valor presente só é aceito se pertencer à allowlist; qualquer outro valor
+ * presente é rejeitado (a rota responde 400 em vez de trocar silenciosamente).
+ */
+export function resolveLang(raw: unknown, fallback: LangId): FieldResolution<LangId> {
+  if (raw == null || raw === "") return { ok: true, value: fallback };
+  return isValidLang(raw) ? { ok: true, value: raw } : { ok: false };
+}
+
+export function resolveDifficulty(
+  raw: unknown,
+  fallback: Difficulty
+): FieldResolution<Difficulty> {
+  if (raw == null || raw === "") return { ok: true, value: fallback };
+  return isValidDifficulty(raw) ? { ok: true, value: raw } : { ok: false };
+}
+
 // ─── Sanitização de resultados (fronteira anti-cheat do leaderboard) ──────────
 // A engine de digitação é client-side, então a API roda com service_role e é o
 // único guardião das tabelas `matches`/`scores` (leaderboard global público).
@@ -104,7 +145,7 @@ export const MAX_NAME_LEN = 20;
 export const ABSOLUTE_MAX_PLAYERS = 12;
 
 /** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
-function clampInt(n: unknown, min: number, max: number): number {
+export function clampInt(n: unknown, min: number, max: number): number {
   const v = Math.round(Number(n));
   if (!Number.isFinite(v)) return min;
   return Math.max(min, Math.min(max, v));
