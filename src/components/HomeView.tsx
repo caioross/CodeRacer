@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, LogIn, Zap, Users, Trophy, Code2, Github, Globe, Lock, RefreshCw } from "lucide-react";
+import { Plus, LogIn, Zap, Users, Trophy, Code2, Dumbbell, Github, Globe, Lock, RefreshCw } from "lucide-react";
 import { fadeUp, ease, dur } from "@/lib/motion";
 import { Logo } from "./Logo";
 import { AuroraBackground } from "./effects/AuroraBackground";
@@ -234,8 +234,8 @@ export function HomeView() {
         <div className="text-center mb-10 md:mb-12">
           {/* Real, single H1 for SEO — visually replaced by the animated logo. */}
           <h1 className="sr-only">
-            CodeRacer — corrida de digitação multiplayer para programadores. Digite código
-            mais rápido que seus amigos, sem cadastro.
+            CodeRacer — corrida de digitação para programadores: treine sozinho ou jogue
+            multiplayer com amigos, digitando código mais rápido, sem cadastro.
           </h1>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -254,8 +254,8 @@ export function HomeView() {
             className="mt-6 text-text-muted text-base md:text-lg max-w-2xl mx-auto text-balance"
           >
             <span className="text-neon-green">// </span>
-            Crie uma sala, manda o link pros amigos e quem digita o código mais rápido leva.
-            Sem cadastro, sem firula.
+            Digite código de verdade — treine sozinho ou crie uma sala e chame os amigos.
+            Quem for mais rápido leva. Sem cadastro, sem firula.
           </motion.p>
 
           <motion.div
@@ -337,6 +337,21 @@ export function HomeView() {
                   <LogIn className="size-4" />
                 </button>
               </div>
+
+              {/* Treino Livre (issue #25): caminho jogável em 1 clique, sem sala. */}
+              <div className="my-4 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-text-dim">
+                <span className="h-px flex-1 bg-bg-line" />
+                ou sozinho
+                <span className="h-px flex-1 bg-bg-line" />
+              </div>
+
+              <Link
+                href="/practice"
+                className="btn-secondary w-full justify-center py-2.5 text-sm"
+                aria-label="Treinar sozinho, sem criar sala"
+              >
+                <Dumbbell className="size-4" /> treinar sozinho →
+              </Link>
             </SpotlightCard>
           </motion.div>
         </div>
