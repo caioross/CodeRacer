@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, LogIn, Zap, Users, Trophy, Code2, Github, Globe, Lock, RefreshCw } from "lucide-react";
+import { Plus, LogIn, Zap, Users, Trophy, Code2, Dumbbell, Github, Globe, Lock, RefreshCw } from "lucide-react";
 import { fadeUp, ease, dur } from "@/lib/motion";
 import { Logo } from "./Logo";
 import { AuroraBackground } from "./effects/AuroraBackground";
@@ -337,6 +337,21 @@ export function HomeView() {
                   <LogIn className="size-4" />
                 </button>
               </div>
+
+              {/* Treino Livre (issue #25): caminho jogável em 1 clique, sem sala. */}
+              <div className="my-4 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-text-dim">
+                <span className="h-px flex-1 bg-bg-line" />
+                ou sozinho
+                <span className="h-px flex-1 bg-bg-line" />
+              </div>
+
+              <Link
+                href="/practice"
+                className="btn-secondary w-full justify-center py-2.5 text-sm"
+                aria-label="Treinar sozinho, sem criar sala"
+              >
+                <Dumbbell className="size-4" /> treinar sozinho →
+              </Link>
             </SpotlightCard>
           </motion.div>
         </div>
