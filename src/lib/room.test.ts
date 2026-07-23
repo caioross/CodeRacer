@@ -2,9 +2,14 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeResults,
   clampInt,
+  raceTimeoutMs,
+  shouldFinishRace,
   MAX_PLAUSIBLE_WPM,
   MAX_NAME_LEN,
-  ABSOLUTE_MAX_PLAYERS
+  ABSOLUTE_MAX_PLAYERS,
+  RACE_IDLE_MS,
+  RACE_TIMEOUT_BASE_MS,
+  RACE_TIMEOUT_MAX_MS
 } from "./room";
 
 // Fronteira anti-cheat do leaderboard: a engine é client-side, então a API roda
@@ -176,5 +181,88 @@ describe("clampInt", () => {
     expect(clampInt("abc", 0, 100)).toBe(0);
     expect(clampInt(Infinity, 0, 100)).toBe(0);
     expect(clampInt(undefined, 5, 100)).toBe(5); // min pode ser != 0
+  });
+});
+
+// Liveness da corrida (#58): antes, um único jogador parado prendia a sala em
+// `racing` para sempre. `shouldFinishRace` é a decisão do líder — o teste cobre
+// os três critérios e, principalmente, os casos em que a corrida NÃO pode morrer.
+
+const START = 1_720_000_000_000;
+const SNIPPET = 300; // teto = 60s + 300×600ms = 240s
+const CTX = { startMs: START, snippetLength: SNIPPET };
+const TIMEOUT = raceTimeoutMs(SNIPPET);
+
+/** Jogador que terminou em `at`. */
+const done = (at = START + 40_000) => ({ finishedAt: at, lastActivityAt: at });
+/** Jogador ainda correndo, com último `progress` em `at`. */
+const running = (at: number) => ({ finishedAt: null, lastActivityAt: at });
+
+describe("raceTimeoutMs", () => {
+  it("cresce com o snippet a partir do piso", () => {
+    expect(raceTimeoutMs(0)).toBe(RACE_TIMEOUT_BASE_MS);
+    expect(raceTimeoutMs(300)).toBe(RACE_TIMEOUT_BASE_MS + 300 * 600);
+    expect(raceTimeoutMs(100)).toBeLessThan(raceTimeoutMs(500));
+  });
+
+  it("nunca passa do teto absoluto e absorve entrada suja", () => {
+    expect(raceTimeoutMs(999_999)).toBe(RACE_TIMEOUT_MAX_MS);
+    expect(raceTimeoutMs(-50)).toBe(RACE_TIMEOUT_BASE_MS);
+    expect(raceTimeoutMs(NaN)).toBe(RACE_TIMEOUT_BASE_MS);
+  });
+});
+
+describe("shouldFinishRace — a corrida acaba", () => {
+  it("(1) todos terminaram", () => {
+    expect(shouldFinishRace([done(), done(START + 50_000)], { ...CTX, now: START + 50_001 })).toBe(
+      true
+    );
+  });
+
+  it("(2) quem falta está inativo há RACE_IDLE_MS e alguém terminou — o caso da issue", () => {
+    const now = START + 40_000 + RACE_IDLE_MS;
+    const players = [done(START + 30_000), running(START + 40_000)];
+    expect(shouldFinishRace(players, { ...CTX, now: now - 1 })).toBe(false); // 1ms antes, não
+    expect(shouldFinishRace(players, { ...CTX, now })).toBe(true);
+  });
+
+  it("(2) jogador que nunca digitou conta como ativo desde o start (lastActivityAt = start)", () => {
+    const players = [done(START + 5_000), running(START)];
+    expect(shouldFinishRace(players, { ...CTX, now: START + RACE_IDLE_MS - 1 })).toBe(false);
+    expect(shouldFinishRace(players, { ...CTX, now: START + RACE_IDLE_MS })).toBe(true);
+  });
+
+  it("(3) teto de duração encerra mesmo sem ninguém ter terminado", () => {
+    const players = [running(START + 1_000), running(START + 2_000)];
+    expect(shouldFinishRace(players, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
+    expect(shouldFinishRace(players, { ...CTX, now: START + TIMEOUT })).toBe(true);
+  });
+});
+
+describe("shouldFinishRace — a corrida continua", () => {
+  it("jogador ativo segurando a corrida não é encerrado por inatividade alheia", () => {
+    const players = [done(START + 10_000), running(START + 59_000)];
+    expect(shouldFinishRace(players, { ...CTX, now: START + 60_000 })).toBe(false);
+  });
+
+  it("todos parados mas NINGUÉM terminou → não mata a corrida (só o teto faz isso)", () => {
+    // Cenário real: os primeiros segundos, todo mundo lendo o snippet antes de digitar.
+    const players = [running(START), running(START)];
+    expect(shouldFinishRace(players, { ...CTX, now: START + RACE_IDLE_MS + 5_000 })).toBe(false);
+  });
+
+  it("durante o countdown (now < startMs) nunca encerra", () => {
+    expect(shouldFinishRace([done(), done()], { ...CTX, now: START - 1 })).toBe(false);
+  });
+
+  it("sala vazia ou sem start_at → não há finish a postar", () => {
+    expect(shouldFinishRace([], { ...CTX, now: START + TIMEOUT * 2 })).toBe(false);
+    expect(shouldFinishRace([done()], { ...CTX, startMs: 0, now: START })).toBe(false);
+  });
+
+  it("um só jogador que ainda corre segura a sala até o teto", () => {
+    const solo = [running(START + 1_000)];
+    expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
+    expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT })).toBe(true);
   });
 });
