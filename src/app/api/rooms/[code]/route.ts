@@ -4,8 +4,10 @@ import { getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
 import {
   COUNTDOWN_MS,
+  MAX_KICKED_ID_LEN,
   addKickedId,
   canKick,
+  kickedListFull,
   resolveDifficulty,
   resolveLang,
   sanitizeResults,
@@ -110,11 +112,23 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // broadcast confiado cegamente. Escopo honesto: mitiga o kick anônimo
       // trivial — não dá autoridade forte (leader_id ainda é spoofável, ver #6).
       if (!isLeader) return leaderOnly();
-      const targetId = String(body?.targetId || "").trim();
-      // `canKick` é a verdade da autorização (espelhada em validate-persistence).
+      // Corta antes de qualquer trabalho: `targetId` gigante não vira string de
+      // 1 MB na memória do handler só para ser rejeitado depois.
+      const targetId = String(body?.targetId || "")
+        .slice(0, MAX_KICKED_ID_LEN + 1)
+        .trim();
+      // `canKick` é a verdade da autorização (espelhada em validate-persistence):
+      // líder legítimo, alvo não-vazio, dentro do teto de tamanho e != líder.
       if (!canKick(room as RoomRow, playerId, targetId))
         return NextResponse.json({ ok: false, error: "Alvo inválido" }, { status: 400 });
-      const kicked = addKickedId(room.kicked_ids, targetId); // idempotente
+      // Lista cheia → erro honesto. Sem isto o `addKickedId` faria no-op e a rota
+      // devolveria `ok: true` sem ter expulsado ninguém.
+      if (kickedListFull(room.kicked_ids) && !(room.kicked_ids || []).includes(targetId))
+        return NextResponse.json(
+          { ok: false, error: "Limite de expulsões desta sala atingido" },
+          { status: 409 }
+        );
+      const kicked = addKickedId(room.kicked_ids, targetId); // idempotente e com teto
       // Falha alto: enquanto a migração 0005 não for aplicada a coluna não existe,
       // e um `ok: true` silencioso faria o líder crer que expulsou alguém.
       const { error: kickErr } = await sb
@@ -135,13 +149,14 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // aplicação da 0005 pelo dono, `kicked_ids` não existe e um update único
       // falharia inteiro — "jogar de novo" morreria em silêncio (as rotas não
       // conferem o `error` do update). Statements separados: o reset sempre vale.
+      // Ordem importa: limpa os expulsos ANTES de anunciar o lobby, senão o
+      // evento que devolve todo mundo ao lobby ainda carrega a lista velha.
+      // Best-effort: inerte enquanto a 0005 não estiver aplicada.
+      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
       await sb
         .from("rooms")
         .update({ status: "lobby", snippet: null, start_at: null, results: null })
         .eq("code", code);
-      // Nova partida limpa a lista de expulsos — não vaza estado entre matches.
-      // Best-effort: inerte enquanto a 0005 não estiver aplicada.
-      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
       return NextResponse.json({ ok: true });
     }
 
