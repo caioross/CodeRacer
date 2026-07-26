@@ -425,6 +425,17 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const maybeFinish = useCallback(() => {
     if (!isLeader || room?.status !== "racing" || finishPostedRef.current || !startMs) return;
     const racers = playersRef.current.filter(p => !p.spectator);
+    // Rede de segurança (#64): se TODOS os competidores da rodada saíram e só
+    // restam espectadores, `racers` fica vazio e `shouldFinishRace` (guarda de
+    // lista vazia) nunca encerraria — a sala ficaria presa em `racing` para
+    // sempre (achado do quórum). O líder encerra com results vazios (cai na tela
+    // de Results vazia da #63), liberando a sala. Só após o countdown.
+    if (racers.length === 0) {
+      if (Date.now() < startMs) return; // ainda no countdown, ninguém digitou
+      finishPostedRef.current = true;
+      postAction("finish", { results: [] });
+      return;
+    }
     const decide = racers.map(p => ({
       finishedAt: p.finishedAt,
       // Quem nunca mandou `progress` conta como ativo desde o start.
