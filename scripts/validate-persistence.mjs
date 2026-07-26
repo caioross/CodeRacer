@@ -14,7 +14,7 @@
 
 const MAX_PLAUSIBLE_WPM = 350;
 const MAX_NAME_LEN = 20;
-const ABSOLUTE_MAX_PLAYERS = 12;
+const ABSOLUTE_MAX_PLAYERS = 30;
 
 function clampInt(n, min, max) {
   const v = Math.round(Number(n));
@@ -202,12 +202,12 @@ console.log("\n── accuracy / errors / place: clamp ────────�
 
 console.log("\n── Tamanho do array limitado a room.max_players ─────────────────");
 {
-  const flood = Array.from({ length: 30 }, (_, i) => legit({ id: `p${i}`, name: `n${i}`, place: i + 1 }));
-  assert("30 linhas numa sala de 8 → cortado em 8", sanitizeResults(flood, ROOM).length === 8);
-  assert("teto absoluto 12 mesmo se max_players absurdo",
-    sanitizeResults(flood, { max_players: 999 }).length === 12);
-  assert("max_players ausente → cai no teto absoluto 12",
-    sanitizeResults(flood, {}).length === 12);
+  const flood = Array.from({ length: 40 }, (_, i) => legit({ id: `p${i}`, name: `n${i}`, place: i + 1 }));
+  assert("40 linhas numa sala de 8 → cortado em 8", sanitizeResults(flood, ROOM).length === 8);
+  assert("teto absoluto 30 mesmo se max_players absurdo",
+    sanitizeResults(flood, { max_players: 999 }).length === 30);
+  assert("max_players ausente → cai no teto absoluto 30",
+    sanitizeResults(flood, {}).length === 30);
 }
 
 console.log("\n── Entradas degeneradas ─────────────────────────────────────────");

@@ -567,7 +567,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     if (fallback) {
       const winner = pickVoteWinner(activeVotes, fallback);
       if (winner !== fallback) {
-        await postAction("settings", { settings: { language: winner } });
+        // Grava a vencedora ANTES do start. Se a escrita falhar (pós-#56 a rota
+        // devolve `ok:false` em vez de fingir sucesso), NÃO inicia: começar aqui
+        // correria com a linguagem antiga enquanto o líder vê um toast de erro.
+        const res = await postAction("settings", { settings: { language: winner } });
+        if (!res?.ok) return res;
       }
     }
     return postAction("start");

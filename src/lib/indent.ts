@@ -75,3 +75,46 @@ export function indentEdit(
     caret: selStart + ins.length
   };
 }
+
+// ─── Auto-indentação no Enter (fricção nº3 do Mobile — issue #62) ─────────────
+// O teclado virtual não tem Tab, então em snippets aninhados o jogador de celular
+// indentava espaço a espaço. `enterEdit` insere o `\n` e delega a `indentEdit` o
+// preenchimento da indentação que o `target` espera na LINHA SEGUINTE — mesma
+// fonte de verdade do Tab, mesmo imunizante contra divergência de índice. Sem
+// nada a indentar (linha rasa, erro que zera o alvo, `target` curto), devolve o
+// `value`/`selStart` intactos: o chamador detecta o no-op por `text === value` e
+// deixa o Enter NATIVO agir (nunca insere lixo, nunca acende erro).
+
+/**
+ * Calcula a edição que o Enter deve produzir no editor da corrida: a quebra de
+ * linha já acompanhada da indentação esperada na linha seguinte.
+ *
+ * Puro e determinístico (reusa `indentEdit`). No-op honesto — sinalizado por
+ * `text === value` — quando não há indentação a preencher; aí o chamador deve
+ * deixar o Enter nativo seguir.
+ *
+ * @returns `{ text, caret }`; no no-op, `{ text: value, caret: selStart }`.
+ */
+export function enterEdit(
+  value: string,
+  target: string,
+  selStart: number,
+  selEnd: number = selStart
+): { text: string; caret: number } {
+  const noop = { text: value, caret: selStart };
+  if (selStart < 0 || selStart > value.length || selEnd < selStart || selEnd > value.length)
+    return noop;
+
+  // Só auto-indenta quebrando no FIM do texto digitado — o fluxo real da corrida
+  // é linear (caret sempre no fim). Enter no meio da linha empurraria conteúdo já
+  // digitado para baixo; indentá-lo seria lixo que desalinha do alvo. Fora daí,
+  // Enter nativo.
+  if (selEnd !== value.length) return noop;
+
+  // Insere o `\n` (substituindo a seleção, se houver) e pergunta a `indentEdit`
+  // o que falta na linha nova — o caret nasce logo após a quebra.
+  const withNl = value.slice(0, selStart) + "\n" + value.slice(selEnd);
+  const { text, caret } = indentEdit(withNl, target, selStart + 1);
+  if (text === withNl) return noop; // sem indentação a preencher → Enter nativo
+  return { text, caret };
+}
