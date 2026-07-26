@@ -64,6 +64,13 @@ export function TypingCore({
   const lastActivityRef = useRef<number>(Date.now());
   const warnStartRef = useRef<number | null>(null);
   const [idleLeft, setIdleLeft] = useState<number | null>(null);
+  // `onAbandon` (=actions.abandon) troca de identidade a cada progress/heartbeat
+  // (depende de `progress` no useRoom). Se ele fosse dep do tick, o efeito
+  // re-rodaria ~1×/s e reancoraria `lastActivityRef` → o aviso NUNCA abriria e o
+  // interval seria recriado a cada tecla. Ref estável: o tick lê a versão atual
+  // sem virar dependência dele.
+  const onAbandonRef = useRef(onAbandon);
+  onAbandonRef.current = onAbandon;
 
   const [typed, setTyped] = useState("");
   const [errors, setErrors] = useState(0);
@@ -142,13 +149,13 @@ export function TypingCore({
       if (remaining <= 0) {
         warnStartRef.current = null;
         setIdleLeft(null);
-        onAbandon?.();
+        onAbandonRef.current?.();
       } else {
         setIdleLeft(remaining);
       }
     }, IDLE_TICK_MS);
     return () => clearInterval(t);
-  }, [idleForfeit, iFinished, startedAt, onAbandon]);
+  }, [idleForfeit, iFinished, startedAt]);
 
   const handleInput = useCallback(
     (next: string) => {
