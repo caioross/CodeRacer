@@ -3,13 +3,16 @@ import {
   sanitizeResults,
   clampInt,
   raceTimeoutMs,
+  roomUpdateOutcome,
   shouldFinishRace,
   MAX_PLAUSIBLE_WPM,
   MAX_NAME_LEN,
   ABSOLUTE_MAX_PLAYERS,
   RACE_IDLE_MS,
   RACE_TIMEOUT_BASE_MS,
-  RACE_TIMEOUT_MAX_MS
+  RACE_TIMEOUT_MAX_MS,
+  tallyVotes,
+  pickVoteWinner
 } from "./room";
 
 // Fronteira anti-cheat do leaderboard: a engine é client-side, então a API roda
@@ -129,7 +132,10 @@ describe("sanitizeResults — clamp de accuracy/errors/place", () => {
 });
 
 describe("sanitizeResults — cap de tamanho do array", () => {
-  const flood = Array.from({ length: 30 }, (_, i) =>
+  // O flood precisa ser MAIOR que ABSOLUTE_MAX_PLAYERS, senão os asserts de teto
+  // passam por tautologia (entram 30, saem 30) e o `break` do cap nunca dispara —
+  // a rede que impede um `finish` forjado de inflar `scores` deixaria de ser testada.
+  const flood = Array.from({ length: ABSOLUTE_MAX_PLAYERS + 10 }, (_, i) =>
     legit({ id: `p${i}`, name: `n${i}`, place: i + 1 })
   );
 
@@ -264,5 +270,92 @@ describe("shouldFinishRace — a corrida continua", () => {
     const solo = [running(START + 1_000)];
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT })).toBe(true);
+  });
+});
+
+// Votação de linguagem (#72): decide a linguagem da próxima corrida. Puro e
+// determinístico (o sorteio de empate recebe um `rng` injetável no teste).
+describe("tallyVotes", () => {
+  it("conta votos por linguagem", () => {
+    expect(tallyVotes({ a: "python", b: "python", c: "rust" })).toEqual({ python: 2, rust: 1 });
+  });
+
+  it("ignora votos em linguagens inexistentes ou não-string", () => {
+    expect(tallyVotes({ a: "cobiscript", b: 42, c: null, d: "go" })).toEqual({ go: 1 });
+  });
+
+  it("mapa vazio → tally vazio", () => {
+    expect(tallyVotes({})).toEqual({});
+  });
+});
+
+describe("pickVoteWinner", () => {
+  it("sem votos → linguagem padrão (fallback)", () => {
+    expect(pickVoteWinner({}, "javascript")).toBe("javascript");
+    expect(pickVoteWinner({ a: "naoexiste" }, "javascript")).toBe("javascript");
+  });
+
+  it("vence a mais votada", () => {
+    expect(pickVoteWinner({ a: "python", b: "python", c: "rust" }, "go")).toBe("python");
+  });
+
+  it("empate → sorteia entre as empatadas (rng injetável)", () => {
+    const votes = { a: "python", b: "rust" }; // 1×1, top = [python, rust]
+    expect(pickVoteWinner(votes, "go", () => 0)).toBe("python"); // índice 0
+    expect(pickVoteWinner(votes, "go", () => 0.99)).toBe("rust"); // índice 1
+  });
+
+  it("empate nunca escapa do conjunto empatado nem estoura o índice", () => {
+    const votes = { a: "python", b: "rust", c: "go" }; // triplo empate
+    const winner = pickVoteWinner(votes, "javascript", () => 1); // rng no limite
+    expect(["python", "rust", "go"]).toContain(winner);
+  });
+
+  it("um voto isolado vence mesmo contra o fallback", () => {
+    expect(pickVoteWinner({ a: "elixir" }, "javascript")).toBe("elixir");
+  });
+});
+
+// #56 — as mutações de sala respondiam `ok: true` sem olhar o `error` do
+// supabase-js (que devolve `{ error }` em vez de lançar). O líder via "partida
+// iniciada" com a sala parada no lobby. Esta é a decisão que a rota consulta.
+describe("roomUpdateOutcome", () => {
+  it("escrita confirmada (≥1 linha) → ok, sem mensagem", () => {
+    const out = roomUpdateOutcome({ rows: 1 });
+    expect(out).toEqual({ ok: true, status: 200 });
+  });
+
+  it("erro do banco → 500 com copy neutra (não vaza detalhe de schema)", () => {
+    const out = roomUpdateOutcome({
+      error: { message: 'new row violates check constraint "rooms_difficulty_chk"' },
+      rows: 0
+    });
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe(500);
+    expect(out.error).toBe("Não foi possível atualizar a sala");
+    // O texto do PostgREST vira toast no cliente (useRoom.ts) — nunca pode passar.
+    expect(out.error).not.toMatch(/constraint|rooms_|violates/);
+  });
+
+  it("erro tem precedência sobre a contagem de linhas", () => {
+    // Com anon+RLS o `.select()` pode voltar vazio junto com o erro; 500 é a
+    // resposta certa — 409 afirmaria que a sala sumiu, o que não sabemos.
+    expect(roomUpdateOutcome({ error: { message: "timeout" }, rows: 3 }).status).toBe(500);
+  });
+
+  it("zero linhas confirmadas → 409 neutro, nunca 'Sala não encontrada'", () => {
+    // `getServerSupabase` cai para a chave anon sem service_role: 0 linhas pode
+    // ser SELECT negado por RLS, não sala apagada. Não afirmamos o que não sabemos.
+    for (const rows of [0, null, undefined]) {
+      const out = roomUpdateOutcome({ rows });
+      expect(out.ok).toBe(false);
+      expect(out.status).toBe(409);
+      expect(out.error).toBe("Não foi possível confirmar a alteração");
+    }
+  });
+
+  it("nunca emite ok sem evidência de escrita (AC da #56)", () => {
+    const semEvidencia = [{ rows: 0 }, { rows: null }, { error: { message: "x" }, rows: 1 }];
+    for (const res of semEvidencia) expect(roomUpdateOutcome(res).ok).toBe(false);
   });
 });

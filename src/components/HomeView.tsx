@@ -16,7 +16,7 @@ import { SpotlightCard } from "./ui/SpotlightCard";
 import { StarBorder } from "./ui/StarBorder";
 import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, langById, type LangId, type Difficulty } from "@/lib/languages";
-import { newPlayerId } from "@/lib/room";
+import { newPlayerId, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 import { useAuth } from "@/lib/useAuth";
 
 const PERSIST_NAME_KEY = "coderacer:name";
@@ -214,12 +214,26 @@ export function HomeView() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={auth.signInWithGoogle}
-                className="btn-secondary text-xs px-3 py-1.5"
-              >
-                <GoogleIcon /> entrar com Google
-              </button>
+              // O hero promete "sem cadastro, sem firula"; sem esta pista o botão
+              // de login lê como requisito e trava o visitante na entrada
+              // (persona Iniciante, D#14 → issue #17). Entrar só pré-preenche o nick.
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={auth.signInWithGoogle}
+                  title="Opcional — entrar só pré-preenche seu nick. Dá para jogar sem conta."
+                  aria-label="Entrar com Google (opcional — dá para jogar sem conta)"
+                  className="btn-secondary text-xs px-3 py-1.5"
+                >
+                  <GoogleIcon /> entrar com Google
+                </button>
+                {/* Redundante para leitor de tela (já está no aria-label do botão). */}
+                <span
+                  aria-hidden="true"
+                  className="hidden sm:inline text-[10px] font-mono text-text-dim"
+                >
+                  opcional
+                </span>
+              </div>
             ))}
 
           <div className="hidden md:flex items-center gap-2 text-xs font-mono text-text-muted">
@@ -298,6 +312,12 @@ export function HomeView() {
                   onChange={e => setName(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && setCreateOpen(true)}
                 />
+                {/* Cobre o mobile, onde o "opcional" do header fica escondido
+                    (`hidden sm:inline`): aqui é onde o jogador de fato age. */}
+                <p className="mt-1.5 text-[11px] font-mono text-text-dim">
+                  <span className="text-neon-green">// </span>
+                  é só o nick — sem conta, sem e-mail
+                </p>
               </div>
 
               <StarBorder
@@ -373,7 +393,7 @@ export function HomeView() {
           />
           <Feature
             icon={<Users className="size-4 text-neon-cyan" />}
-            title="até 12 jogadores"
+            title={`até ${ABSOLUTE_MAX_PLAYERS} jogadores`}
             text="Compartilhe o código de 6 letras ou o link da sala — gente entra na hora."
           />
           <Feature
@@ -466,14 +486,14 @@ export function HomeView() {
             <input
               type="range"
               min={2}
-              max={12}
+              max={ABSOLUTE_MAX_PLAYERS}
               value={maxPlayers}
               onChange={e => setMaxPlayers(Number(e.target.value))}
               className="w-full mt-2 accent-[#00ff88]"
             />
             <div className="flex justify-between text-[10px] text-text-dim font-mono mt-1">
               <span>2</span>
-              <span>12</span>
+              <span>{ABSOLUTE_MAX_PLAYERS}</span>
             </div>
           </div>
 

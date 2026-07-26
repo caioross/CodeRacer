@@ -7,6 +7,9 @@ import {
   colorForId,
   newPlayerId,
   shouldFinishRace,
+  pickVoteWinner,
+  tallyVotes,
+  isValidLang,
   RACE_DECISION_TICK_MS,
   type ChatMsg,
   type LivePlayer,
@@ -15,6 +18,7 @@ import {
   type ResultRow,
   type RoomRow
 } from "./room";
+import type { LangId } from "./languages";
 
 const SESSION_KEY = (code: string) => `coderacer:room:${code}`;
 const NAME_KEY = "coderacer:name";
@@ -37,6 +41,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const [presence, setPresence] = useState<Record<string, PresenceMeta>>({});
   const [progress, setProgress] = useState<Record<string, ProgressMsg>>({});
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
+  // Votação de linguagem (#72): playerId → LangId escolhida. Broadcast, como o ready.
+  const [votesMap, setVotesMap] = useState<Record<string, LangId>>({});
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
   const [joinName, setJoinName] = useState<string | null>(null);
@@ -47,6 +53,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const myFinishRef = useRef<number | null>(null);
   const myAbandonRef = useRef(false);
   const myReadyRef = useRef(false);
+  const myVoteRef = useRef<LangId | null>(null);
   const myMetaRef = useRef<PresenceMeta | null>(null);
   const finishPostedRef = useRef(false);
   // Epoch do último `progress` de cada jogador — alimenta o critério de
@@ -57,6 +64,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const claimingRef = useRef(false);
   const lastSentRef = useRef(0);
   const lastStartRef = useRef<string | null>(null);
+  // Espelhos (não-reativos) para os handlers do canal, que fecham sobre o estado
+  // uma única vez: resolvem o NOME da vítima e evitam anunciar o mesmo kick 2x.
+  const presenceRef = useRef<Record<string, PresenceMeta>>({});
+  const roomRef = useRef<RoomRow | null>(null);
+  const announcedKicksRef = useRef<Set<string>>(new Set());
   const onErrorRef = useRef(onError);
   const onLeaveRef = useRef(onLeave);
   onErrorRef.current = onError;
@@ -137,8 +149,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           onLeaveRef.current?.();
           return;
         }
-        setRoom(json.room as RoomRow);
-        lastStartRef.current = (json.room as RoomRow).start_at;
+        const seeded = json.room as RoomRow;
+        roomRef.current = seeded;
+        setRoom(seeded);
+        lastStartRef.current = seeded.start_at;
+        // Kicks já persistidos ao entrar são passado — não os anuncie como novos.
+        for (const k of Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : []) {
+          announcedKicksRef.current.add(k);
+        }
       } catch {
         if (cancelled) return;
         fail("Não foi possível carregar a sala");
@@ -158,6 +176,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           const metas = state[key];
           if (metas && metas[0]) map[key] = metas[0];
         }
+        presenceRef.current = map;
         setPresence(map);
       });
       channel.on("presence", { event: "join" }, ({ newPresences }) => {
@@ -168,14 +187,28 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
             someoneElse = true;
           }
         }
-        // Broadcast has no replay — re-announce my "ready" so newcomers see it.
+        // Broadcast has no replay — re-announce my "ready"/"vote" so newcomers see them.
         if (someoneElse && myReadyRef.current) {
           channel.send({ type: "broadcast", event: "ready", payload: { id, ready: true } });
+        }
+        if (someoneElse && myVoteRef.current) {
+          channel.send({ type: "broadcast", event: "vote", payload: { id, language: myVoteRef.current } });
         }
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
         for (const p of leftPresences as unknown as PresenceMeta[]) {
-          pushSystem(`${p.name} saiu`);
+          const { id: leftId, name: leftName } = p;
+          // Expulso pelo líder já ganhou a própria notificação ("removido") —
+          // não duplique com um genérico "saiu". A ordem de entrega entre o
+          // `postgres_changes` (que preenche `roomRef.kicked_ids`) e este evento
+          // de presence NÃO é garantida pelo Realtime; se o leave chegar primeiro,
+          // uma checagem síncrona veria a lista antiga e anunciaria os dois.
+          // Adiar o "saiu" e reconferir deixa a verdade da expulsão assentar.
+          setTimeout(() => {
+            const kicked = roomRef.current?.kicked_ids;
+            if (Array.isArray(kicked) && kicked.includes(leftId)) return;
+            pushSystem(`${leftName} saiu`);
+          }, 400);
         }
       });
 
@@ -199,16 +232,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setReadyMap(prev => ({ ...prev, [m.id as string]: !!m.ready }));
       });
 
-      // Leader kicked someone — if it's me, leave the room.
-      channel.on("broadcast", { event: "kick" }, ({ payload }) => {
-        const targetId = (payload as { id?: string })?.id;
-        if (targetId && targetId === id) {
-          try {
-            sessionStorage.removeItem(SESSION_KEY(code));
-          } catch {}
-          fail("Você foi removido da sala pelo líder");
-          onLeaveRef.current?.();
-        }
+      // Voto de linguagem (#72) — mesmo transporte confiável do ready.
+      channel.on("broadcast", { event: "vote" }, ({ payload }) => {
+        const m = payload as { id?: string; language?: unknown };
+        if (!m?.id || !isValidLang(m.language)) return;
+        setVotesMap(prev => ({ ...prev, [m.id as string]: m.language as LangId }));
       });
 
       channel.on(
@@ -216,7 +244,33 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
         payload => {
           const next = payload.new as RoomRow;
-          if (next && next.code) setRoom(next);
+          if (!next || !next.code) return;
+          const kicks = Array.isArray(next.kicked_ids) ? next.kicked_ids : [];
+          // Expulsão com autoridade (#39): a saída só é definitiva quando o
+          // servidor registra meu id em `kicked_ids` — nunca por broadcast.
+          if (kicks.includes(id)) {
+            try {
+              sessionStorage.removeItem(SESSION_KEY(code));
+            } catch {}
+            fail("Você foi removido da sala pelo líder");
+            onLeaveRef.current?.();
+            return;
+          }
+          // Notifica TODA a sala (#66) sobre cada expulsão nova, resolvendo o
+          // nome pela presence do momento (a vítima ainda não saiu do canal).
+          // Rider do mesmo update autoritativo — nenhum broadcast novo a confiar.
+          if (kicks.length === 0) {
+            announcedKicksRef.current.clear(); // `reset` zerou os kicks
+          } else {
+            for (const kid of kicks) {
+              if (announcedKicksRef.current.has(kid)) continue;
+              announcedKicksRef.current.add(kid);
+              const nome = presenceRef.current[kid]?.name;
+              if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
+            }
+          }
+          roomRef.current = next;
+          setRoom(next);
         }
       );
 
@@ -258,20 +312,24 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         myFinishRef.current = null;
         myAbandonRef.current = false;
         myReadyRef.current = false;
+        myVoteRef.current = null;
         finishPostedRef.current = false;
         lastActivityRef.current = {};
         setProgress({});
         setReadyMap({});
+        setVotesMap({});
       }
     }
     if (room?.status === "lobby") {
       myFinishRef.current = null;
       myAbandonRef.current = false;
       myReadyRef.current = false;
+      myVoteRef.current = null;
       finishPostedRef.current = false;
       lastActivityRef.current = {};
       setProgress({});
       setReadyMap({});
+      setVotesMap({});
     }
   }, [room?.start_at, room?.status]);
 
@@ -312,6 +370,19 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   }, [presence, progress, readyMap]);
 
   const isLeader = !!room && !!meId && room.leader_id === meId;
+
+  // Votação de linguagem (#72): só contam votos de quem AINDA está presente —
+  // um jogador que saiu ou foi kickado não deve continuar pesando no resultado.
+  const activeVotes = useMemo(() => {
+    const active: Record<string, LangId> = {};
+    for (const [pid, lang] of Object.entries(votesMap)) {
+      if (presence[pid]) active[pid] = lang;
+    }
+    return active;
+  }, [votesMap, presence]);
+  const voteTally = useMemo(() => tallyVotes(activeVotes), [activeVotes]);
+  const myVote: LangId | null = (meId && votesMap[meId]) || null;
+
   const countdownN =
     room?.status === "racing" && startMs && now < startMs
       ? Math.max(1, Math.ceil((startMs - now) / 1000))
@@ -463,18 +534,48 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     ch.send({ type: "broadcast", event: "ready", payload: { id, ready } });
   }, []);
 
-  // Leader removes a player: broadcast a kick the target obeys by leaving.
-  const kick = useCallback((targetId: string) => {
+  // Leader removes a player via the server (#39): the API checks authority and
+  // records the target in `kicked_ids`; the victim leaves on postgres_changes.
+  const kick = useCallback(
+    (targetId: string) => {
+      if (!targetId) return;
+      return postAction("kick", { targetId });
+    },
+    [postAction]
+  );
+
+  // Registrar/trocar meu voto de linguagem (#72) — broadcast confiável + otimista.
+  const castVote = useCallback((language: LangId) => {
+    const id = meIdRef.current;
     const ch = channelRef.current;
-    if (!ch || !targetId) return;
-    ch.send({ type: "broadcast", event: "kick", payload: { id: targetId } });
+    if (!id || !ch || !isValidLang(language)) return;
+    myVoteRef.current = language;
+    setVotesMap(prev => ({ ...prev, [id]: language })); // otimista
+    ch.send({ type: "broadcast", event: "vote", payload: { id, language } });
   }, []);
 
   const updateSettings = useCallback(
     (settings: Record<string, unknown>) => postAction("settings", { settings }),
     [postAction]
   );
-  const startRace = useCallback(() => postAction("start"), [postAction]);
+
+  // Ao iniciar, o líder resolve a linguagem vencedora da votação (#72) e a grava
+  // em `rooms.language` (via `settings`) ANTES de dar `start` — que lê essa linha
+  // para sortear o snippet. Sem votos, mantém a linguagem padrão da sala.
+  const startRace = useCallback(async () => {
+    const fallback = room?.language;
+    if (fallback) {
+      const winner = pickVoteWinner(activeVotes, fallback);
+      if (winner !== fallback) {
+        // Grava a vencedora ANTES do start. Se a escrita falhar (pós-#56 a rota
+        // devolve `ok:false` em vez de fingir sucesso), NÃO inicia: começar aqui
+        // correria com a linguagem antiga enquanto o líder vê um toast de erro.
+        const res = await postAction("settings", { settings: { language: winner } });
+        if (!res?.ok) return res;
+      }
+    }
+    return postAction("start");
+  }, [postAction, room?.language, activeVotes]);
   const resetToLobby = useCallback(() => postAction("reset"), [postAction]);
 
   return {
@@ -485,6 +586,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     isLeader,
     chat,
     countdownN,
+    voteTally,
+    myVote,
     join,
     actions: {
       updateSettings,
@@ -494,7 +597,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       abandon,
       sendChat,
       setReady,
-      kick
+      kick,
+      castVote
     }
   };
 }
