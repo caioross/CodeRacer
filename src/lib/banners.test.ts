@@ -134,18 +134,48 @@ describe("stepCloth — o pano", () => {
     expect(left.theta).toBeGreaterThan(0);
   });
 
-  it("velocidade constante quase não inclina — é tecido pesado, não bandeira ao vento", () => {
+  it("em movimento contínuo o pano fica atrás, mas discreto — arrasto, não vento", () => {
+    // A issue pede "o tecido atrasa levemente" ENQUANTO a gôndola anda; o rastro
+    // existe, mas tem que ser uma fração do que a aceleração provoca.
     const arrastando = simulate(CLOTH_REST, { accel: 0, velocity: 1500 }, 2);
-    // Regime permanente = -v·dragGain/ω0² ≈ 0.008 rad (~0.5°).
-    expect(Math.abs(arrastando.theta)).toBeLessThan(0.02);
+    const freando = simulate(CLOTH_REST, { accel: 4800, velocity: 1500 }, 0.3);
+    expect(Math.abs(arrastando.theta)).toBeGreaterThan(0.01);
+    expect(Math.abs(arrastando.theta)).toBeLessThan(0.09);
+    expect(Math.abs(freando.theta)).toBeGreaterThan(3 * Math.abs(arrastando.theta));
   });
 
-  it("cessado o estímulo, volta ao repouso em menos de 1,5s (amortecido)", () => {
-    const chutado = simulate(CLOTH_REST, { accel: 900, velocity: 300 }, 0.15);
-    expect(Math.abs(chutado.theta)).toBeGreaterThan(0.005); // de fato balançou
-    const parado = simulate(chutado, still, 1.5);
-    expect(Math.abs(parado.theta)).toBeLessThan(0.002);
-    expect(Math.abs(parado.omega)).toBeLessThan(0.02);
+  it("o balanço é grande o bastante para ser VISTO (a regressão da #99)", () => {
+    // Calibração antiga: a desaceleração de um arremesso dava θ≈0.027 rad, que
+    // num estandarte de 50px vira <1px de ponta — daí "praticamente rígidas".
+    const arremesso = simulate(CLOTH_REST, { accel: 4800, velocity: 1500 }, 0.25);
+    const pontaPx = Math.abs(arremesso.theta) * 50; // SWAY_FACTOR 1.0, w=50px
+    expect(pontaPx).toBeGreaterThan(6);
+  });
+
+  it("cessado o estímulo, volta ao repouso em ~2,5s (amortecido)", () => {
+    const chutado = simulate(CLOTH_REST, { accel: 4800, velocity: 1500 }, 0.15);
+    expect(Math.abs(chutado.theta)).toBeGreaterThan(0.02); // de fato balançou
+    const parado = simulate(chutado, still, 2.5);
+    expect(Math.abs(parado.theta)).toBeLessThan(0.005);
+    expect(Math.abs(parado.omega)).toBeLessThan(0.03);
+  });
+
+  it("dá uma ou duas oscilações discretas antes de estabilizar (não mais)", () => {
+    // Conta as inversões de sinal de θ depois que o estímulo cessa.
+    let cur = simulate(CLOTH_REST, { accel: 4800, velocity: 0 }, 0.15);
+    let sinal = Math.sign(cur.theta);
+    let inversoes = 0;
+    for (let t = 0; t < 3; t += 1 / 60) {
+      cur = stepCloth(cur, still, 1 / 60);
+      const s = Math.sign(cur.theta);
+      // Só conta enquanto a amplitude ainda é perceptível (>0.5px na ponta).
+      if (s !== 0 && s !== sinal && Math.abs(cur.theta) * 50 > 0.5) {
+        inversoes++;
+        sinal = s;
+      }
+    }
+    expect(inversoes).toBeGreaterThanOrEqual(1);
+    expect(inversoes).toBeLessThanOrEqual(4); // ≤2 oscilações completas
   });
 
   it("a oscilação decai — nunca é um pêndulo perpétuo", () => {
@@ -200,7 +230,7 @@ describe("isClothAtRest — desligar o rAF", () => {
 
   it("o repouso é alcançável de verdade a partir de um chute", () => {
     // Sem isto o rAF nunca desligaria — o limiar precisa ser atingível.
-    const parado = simulate(simulate(CLOTH_REST, { accel: 900, velocity: 300 }, 0.15), still, 3);
+    const parado = simulate(simulate(CLOTH_REST, { accel: 4800, velocity: 1500 }, 0.15), still, 5);
     expect(isClothAtRest(parado, still)).toBe(true);
   });
 });

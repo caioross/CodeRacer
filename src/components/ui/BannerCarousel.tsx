@@ -23,12 +23,18 @@ import {
 const SEGMENTS = 9;
 /** Espaçamento entre estandartes, em múltiplos da largura. */
 const PITCH_FACTOR = 1.22;
-/** Balanço máximo da ponta, em múltiplos da largura do estandarte. */
-const SWAY_FACTOR = 0.55;
+/**
+ * Balanço da ponta, em múltiplos da largura do estandarte por radiano. Em 1.0,
+ * θ = 0.26 rad (desaceleração típica de um arremesso) desloca a ponta em ~26%
+ * da largura — curvatura legível. Era 0.55, e o movimento ficava sub-pixel (#99).
+ */
+const SWAY_FACTOR = 1;
 /** Altura reservada para a haste no topo da gôndola (px). */
 const GONDOLA_INSET = 18;
 /** Abaixo disto o arremesso acabou e o carousel encaixa (px/s). */
 const FLING_FLOOR = 60;
+/** Movimento (px) a partir do qual o gesto deixa de ser toque e vira arrasto. */
+const DRAG_SLOP = 6;
 
 interface Props {
   /** Linguagem escolhida, ou `null` quando ainda não há escolha (votação). */
@@ -45,6 +51,13 @@ interface Props {
   badges?: Record<string, number>;
   /** Linguagens em primeiro lugar — selo dourado. */
   leadingIds?: string[];
+  /**
+   * Onde a gôndola abre quando ainda NÃO há escolha (`value` nulo). No lobby é
+   * a linguagem com que a sala foi criada: sem isto o carousel abria sempre no
+   * primeiro estandarte e o jogador via um estado inicial que não corresponde à
+   * sala (#99 item 6).
+   */
+  centerOn?: LangId | null;
   /** id de um <label> externo, para o radiogroup ser anunciado com nome. */
   labelledBy?: string;
 }
@@ -80,6 +93,7 @@ export function BannerCarousel({
   commitOnSettle = true,
   badges,
   leadingIds,
+  centerOn,
   labelledBy
 }: Props) {
   const reduced = useReducedMotion();
@@ -88,7 +102,11 @@ export function BannerCarousel({
     () => (value ? LANGUAGES.findIndex(l => l.id === value) : -1),
     [value]
   );
-  const homeIndex = checkedIndex < 0 ? 0 : checkedIndex;
+  const homeIndex = useMemo(() => {
+    if (checkedIndex >= 0) return checkedIndex;
+    const i = centerOn ? LANGUAGES.findIndex(l => l.id === centerOn) : -1;
+    return i < 0 ? 0 : i;
+  }, [checkedIndex, centerOn]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -102,6 +120,8 @@ export function BannerCarousel({
   const clothRef = useRef<ClothState[]>(LANGUAGES.map(() => ({ ...CLOTH_REST })));
   const draggingRef = useRef(false);
   const movedRef = useRef(0);
+  /** O jogador já interagiu? Depois disso a gôndola não é recentralizada sozinha. */
+  const touchedRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef(0);
   const geomRef = useRef({ w: 52, pitch: 64, half: 200 });
@@ -117,6 +137,20 @@ export function BannerCarousel({
     setFocusIndexState(i);
   }, []);
   const profile = useMemo(() => bendProfile(SEGMENTS), []);
+  /**
+   * Derivada do perfil em cada faixa. Só transladar as faixas deixa degraus
+   * visíveis no pico do balanço (o pano vira escada); cisalhando cada faixa pela
+   * inclinação local, as bordas de faixas vizinhas se encontram e a silhueta
+   * lida como curva contínua — com as mesmas 9 faixas.
+   */
+  const slopes = useMemo(() => {
+    const p = bendProfile(SEGMENTS);
+    return p.map((_, s) => {
+      if (s === 0) return p[1] - p[0];
+      if (s === p.length - 1) return p[s] - p[s - 1];
+      return (p[s + 1] - p[s - 1]) / 2;
+    });
+  }, []);
 
   // O rAF é criado uma vez; tudo que ele lê do render atual passa por ref,
   // senão o loop congela o `value`/`onChange` da primeira renderização.
@@ -152,9 +186,11 @@ export function BannerCarousel({
       // O centro fica em 1.0 (não mais): com `origin-top`, qualquer escala >1
       // cresceria para baixo e a ponta do estandarte seria cortada pelo
       // `overflow-hidden` da gôndola.
-      const scale = 1 - Math.min(dist, 3) * 0.1;
+      // Contraste forte entre o centro e os vizinhos (#99 item 4): quem está
+      // escolhido tem que saltar aos olhos, e os laterais viram profundidade.
+      const scale = 1 - Math.min(dist, 3) * 0.15;
       el.style.transform = `translate3d(${x}px,0,0) scale(${scale})`;
-      el.style.opacity = String(Math.max(0.34, 1 - dist * 0.2));
+      el.style.opacity = String(Math.max(0.22, 1 - dist * 0.3));
       el.style.zIndex = String(100 - Math.round(dist * 10));
       el.dataset.centered = dist < 0.5 ? "true" : "false";
       // Largura em px: a razão do estandarte não pode depender de `--banner-w`
@@ -166,12 +202,17 @@ export function BannerCarousel({
       const strips = stripRefs.current[i];
       if (!strips || Math.abs(x) > half + pitch) continue;
       const sway = clothRef.current[i].theta * w * SWAY_FACTOR;
+      // Altura de uma faixa em px: converte a derivada do perfil (adimensional)
+      // em inclinação px/px, que é a tangente do ângulo de cisalhamento.
+      const stripH = (el.clientHeight || 1) / SEGMENTS;
       for (let s = 0; s < strips.length; s++) {
         const node = strips[s];
-        if (node) node.style.transform = `translate3d(${sway * profile[s]}px,0,0)`;
+        if (!node) continue;
+        const skew = Math.atan((sway * slopes[s]) / stripH);
+        node.style.transform = `translate3d(${sway * profile[s]}px,0,0) skewX(${skew}rad)`;
       }
     }
-  }, [count, measure, profile]);
+  }, [count, measure, profile, slopes]);
 
   /** Liga o loop; ele se desliga sozinho quando tudo assenta. */
   const wake = useCallback(() => {
@@ -294,14 +335,21 @@ export function BannerCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Escolha vinda de fora (o líder trocou a linguagem via Realtime, p. ex.).
+  // Escolha vinda de fora (outro jogador votou, o líder trocou a linguagem via
+  // Realtime) e chegada tardia do `centerOn` — no lobby a sala só é carregada
+  // depois da montagem, então a linguagem da sala aparece alguns frames adiante.
   useEffect(() => {
-    if (draggingRef.current || checkedIndex < 0) return;
+    if (draggingRef.current) return;
+    // Sem voto próprio, seguir o `centerOn` só faz sentido enquanto o jogador
+    // não mexeu na gôndola: depois disso, recentralizar seria sequestrar o
+    // gesto dele.
+    const alvo = checkedIndex >= 0 ? checkedIndex : touchedRef.current ? -1 : homeIndex;
+    if (alvo < 0) return;
     const { pitch } = geomRef.current;
-    if (nearestIndex(offsetRef.current, pitch, count) === checkedIndex) return;
-    centerTo(checkedIndex);
-    setFocusIndex(checkedIndex);
-  }, [checkedIndex, count, centerTo]);
+    if (nearestIndex(offsetRef.current, pitch, count) === alvo) return;
+    centerTo(alvo);
+    setFocusIndex(alvo);
+  }, [checkedIndex, homeIndex, count, centerTo, setFocusIndex]);
 
   useEffect(
     () => () => {
@@ -314,12 +362,17 @@ export function BannerCarousel({
   const dragRef = useRef({ x: 0, t: 0 });
 
   const onPointerDown = (e: React.PointerEvent) => {
+    touchedRef.current = true;
     draggingRef.current = true;
     movedRef.current = 0;
     dragRef.current = { x: e.clientX, t: e.timeStamp };
     targetRef.current = null;
     velRef.current = 0;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // NÃO capturar o ponteiro aqui: com a captura ativa o navegador entrega o
+    // `click` ao elemento de captura (a gôndola) em vez do estandarte, e o
+    // clique no botão nunca acontece — foi o que matou a votação do lobby, onde
+    // clicar é a única forma de votar (#99). A captura só entra quando o gesto
+    // vira arrasto de fato (ver onPointerMove).
     wake();
   };
 
@@ -331,6 +384,12 @@ export function BannerCarousel({
     movedRef.current += Math.abs(dx);
     offsetRef.current -= dx;
     velRef.current = -dx / dt;
+    // Passou de toque para arrasto: agora sim capturar, para o gesto continuar
+    // valendo se o dedo/cursor sair da gôndola. Abaixo do limiar não capturamos,
+    // senão o `click` do estandarte seria engolido (#99).
+    if (movedRef.current > DRAG_SLOP && !e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     wake();
   };
 
@@ -350,6 +409,7 @@ export function BannerCarousel({
   };
 
   const onWheel = (e: React.WheelEvent) => {
+    touchedRef.current = true;
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (!d) return;
     targetRef.current = null;
@@ -359,6 +419,7 @@ export function BannerCarousel({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    touchedRef.current = true;
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     let next = -1;
     if (step) next = (((focusRef.current + step) % count) + count) % count;
@@ -388,17 +449,23 @@ export function BannerCarousel({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onWheel={onWheel}
-        className={
-          "banner-gondola relative h-[210px] sm:h-[268px] overflow-hidden rounded-lg " +
-          "border border-bg-line bg-bg " +
-          "cursor-grab active:cursor-grabbing"
-        }
-        style={{ touchAction: "pan-y" }}
+        className="banner-gondola relative h-[210px] sm:h-[268px] cursor-grab overflow-hidden active:cursor-grabbing"
+        style={{
+          touchAction: "pan-y",
+          // Sem moldura nem fundo (#99 item 2): os estandartes ficam suspensos
+          // sobre o fundo da própria aplicação. A máscara dissolve as pontas em
+          // vez de cortá-las na reta — sem ela, tirar o fundo deixa à mostra o
+          // corte seco do `overflow-hidden`.
+          maskImage:
+            "linear-gradient(to right, transparent, #000 14%, #000 86%, transparent)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent, #000 14%, #000 86%, transparent)"
+        }}
       >
         {/* A haste da gôndola: os estandartes pendem dela. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-[6px] z-[200] h-[3px] bg-gradient-to-r from-transparent via-amber-700/70 to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-[6px] z-[200] h-[2px] bg-gradient-to-r from-transparent via-amber-800/50 to-transparent"
         />
         <div className="absolute left-1/2 top-0 h-full w-0">
           {LANGUAGES.map((l, i) => {
@@ -418,7 +485,7 @@ export function BannerCarousel({
                 onFocus={() => setFocusIndex(i)}
                 onClick={() => {
                   // Um arrasto que terminou sobre o item não é um clique.
-                  if (movedRef.current > 6) return;
+                  if (movedRef.current > DRAG_SLOP) return;
                   select(i);
                 }}
                 className="banner-item absolute origin-top focus-visible:outline-none"
@@ -430,9 +497,9 @@ export function BannerCarousel({
                   marginLeft: "calc(var(--banner-w, 52px) / -2)"
                 }}
               >
-                {/* Fundo preto sob as faixas: o pano cisalha ao balançar e um
-                    fio de subpixel entre faixas some contra o preto da arte. */}
-                <span className="banner-cloth relative block h-full w-full overflow-hidden rounded-[2px] bg-black">
+                {/* Sem cor de fundo: os assets têm alpha (#99 item 2) e um
+                    preenchimento aqui devolveria a caixa retangular. */}
+                <span className="banner-cloth relative block h-full w-full overflow-hidden">
                   {profile.map((_, s) => (
                     <span
                       key={s}

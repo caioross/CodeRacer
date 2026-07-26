@@ -74,7 +74,7 @@ export function Lobby({
           animate={{ opacity: 1, y: 0 }}
           className="card p-6"
         >
-          <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
                 <span className="text-neon-green">// </span>lobby
@@ -97,38 +97,10 @@ export function Lobby({
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {!isLeader && (
-                // Destaque do CTA (issue #71): quando NÃO está pronto, é o botão
-                // primário verde, maior e pulsando — é a ação que o jogador precisa
-                // achar. Uma vez pronto, vira um estado calmo e claramente concluído
-                // (verde + check), sem competir por atenção. Antes era o inverso.
-                <button
-                  onClick={() => onSetReady(!myReady)}
-                  className={
-                    myReady
-                      ? "btn-secondary border-neon-green/50 text-neon-green"
-                      : "btn-primary animate-ready-pulse px-5 py-2.5 text-sm font-bold"
-                  }
-                  aria-pressed={myReady}
-                >
-                  {myReady ? (
-                    <>
-                      <Check className="size-4" /> pronto!
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="size-4" /> Ficar pronto
-                    </>
-                  )}
-                </button>
-              )}
-              <button onClick={copyLink} className="btn-secondary">
-                <Share2 className="size-4" />
-                Compartilhar
-              </button>
-            </div>
           </div>
+          {/* As ações (pronto / iniciar / compartilhar) desceram para o rodapé
+              do card de configurações (#99 item 1): toda a área de configurar a
+              sala fica num bloco visual só, e a gôndola sobe para o topo. */}
         </motion.div>
 
         {/* settings */}
@@ -158,10 +130,9 @@ export function Lobby({
                   {voteSummary}
                 </span>
               </div>
-              <p className="text-[10px] text-text-dim mt-1 normal-case">
-                todos votam · você pode trocar até o início · a mais votada vence
-              </p>
-              <div className="mt-2">
+              {/* A gôndola encosta no título (#99 item 1); a explicação desce
+                  para baixo dela, onde não empurra o carousel para o meio. */}
+              <div className="mt-1">
                 {/* `commitOnSettle={false}`: girar a gôndola só navega — o voto
                     sai no clique/Enter. Sem isso, arrastar votaria em cada
                     linguagem que passasse pelo centro. */}
@@ -171,9 +142,13 @@ export function Lobby({
                   commitOnSettle={false}
                   badges={voteTally}
                   leadingIds={leaders.map(l => l.id)}
+                  centerOn={room.settings.language as LangId}
                   labelledBy="lobby-lang-label"
                 />
               </div>
+              <p className="text-[10px] text-text-dim mt-1 normal-case text-center">
+                todos votam · você pode trocar até o início · a mais votada vence
+              </p>
             </div>
 
             <div>
@@ -223,17 +198,51 @@ export function Lobby({
             </div>
           </div>
 
-          {isLeader && (
-            <div className="mt-6">
-              <motion.button
-                whileHover={allReady ? { scale: 1.01 } : undefined}
-                whileTap={allReady ? { scale: 0.99 } : undefined}
-                onClick={onStart}
-                disabled={!allReady}
-                className="btn-primary w-full py-3 text-base disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Play className="size-4" /> Iniciar partida
-              </motion.button>
+          {/* Ações da sala, agrupadas com as configurações (#99 item 1). */}
+          <div className="mt-6 border-t border-bg-line pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              {isLeader ? (
+                <motion.button
+                  whileHover={allReady ? { scale: 1.01 } : undefined}
+                  whileTap={allReady ? { scale: 0.99 } : undefined}
+                  onClick={onStart}
+                  disabled={!allReady}
+                  className="btn-primary flex-1 py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Play className="size-4" /> Iniciar partida
+                </motion.button>
+              ) : (
+                // Destaque do CTA (issue #71): quando NÃO está pronto, é o botão
+                // primário verde, maior e pulsando — é a ação que o jogador precisa
+                // achar. Uma vez pronto, vira um estado calmo e claramente concluído
+                // (verde + check), sem competir por atenção. Antes era o inverso.
+                <button
+                  onClick={() => onSetReady(!myReady)}
+                  className={
+                    "flex-1 py-3 text-base " +
+                    (myReady
+                      ? "btn-secondary border-neon-green/50 text-neon-green"
+                      : "btn-primary animate-ready-pulse font-bold")
+                  }
+                  aria-pressed={myReady}
+                >
+                  {myReady ? (
+                    <>
+                      <Check className="size-4" /> pronto!
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="size-4" /> Ficar pronto
+                    </>
+                  )}
+                </button>
+              )}
+              <button onClick={copyLink} className="btn-secondary py-3">
+                <Share2 className="size-4" />
+                Compartilhar
+              </button>
+            </div>
+            {isLeader && (
               <p className="mt-2 text-center text-[11px] font-mono text-text-dim">
                 {others.length === 0
                   ? "// sem outros jogadores — inicie quando quiser"
@@ -241,8 +250,8 @@ export function Lobby({
                   ? "// todos prontos! manda ver 🚀"
                   : `// prontos: ${readyCount}/${others.length} — aguardando todos marcarem pronto`}
               </p>
-            </div>
-          )}
+            )}
+          </div>
         </motion.div>
 
         {/* players grid */}

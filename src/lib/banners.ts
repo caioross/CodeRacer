@@ -81,12 +81,24 @@ export interface ClothParams {
   maxTheta: number; // rad — teto de inclinação (evita pano "quebrado")
 }
 
+/**
+ * Calibração (#99). A primeira versão era inaudível: com `accelGain` 0.00055, a
+ * desaceleração típica de um arremesso (~4800 px/s²) produzia θ ≈ 0.027 rad, ou
+ * seja **menos de 1 px** de deslocamento na ponta — os estandartes pareciam
+ * rígidos, exatamente como relatado. Os ganhos abaixo miram ~13 px de atraso na
+ * ponta de um estandarte de ~50 px durante o arremesso: curvatura claramente
+ * legível, ainda longe de bandeira ao vento.
+ *
+ * `omega0` 6.0 e `zeta` 0.35 dão o pêndulo lento e pesado que a issue pede: o
+ * primeiro contragolpe vale ~31% do balanço e o segundo ~10%, isto é, uma ou
+ * duas oscilações discretas antes de estabilizar.
+ */
 export const HEAVY_CLOTH: ClothParams = {
-  omega0: 7.2,
-  zeta: 0.42,
-  accelGain: 0.00055,
-  dragGain: 0.00028,
-  maxTheta: 0.42
+  omega0: 6.0,
+  zeta: 0.35,
+  accelGain: 0.002,
+  dragGain: 0.0012,
+  maxTheta: 0.5
 };
 
 /**
@@ -121,9 +133,12 @@ export function stepCloth(
  * parado" e o objetivo de performance da issue (nada roda à toa).
  */
 export function isClothAtRest(s: ClothState, drive: { accel: number; velocity: number }): boolean {
+  // Limiares em rad: 5e-4 vale ~0,03 px na ponta — abaixo do subpixel, ou seja,
+  // dormir aqui é indistinguível de continuar simulando, e o limiar precisa ser
+  // frouxo o bastante para ser ALCANÇADO (senão o rAF nunca desliga).
   return (
-    Math.abs(s.theta) < 1e-4 &&
-    Math.abs(s.omega) < 1e-3 &&
+    Math.abs(s.theta) < 5e-4 &&
+    Math.abs(s.omega) < 5e-3 &&
     Math.abs(drive.accel) < 1 &&
     Math.abs(drive.velocity) < 1
   );
