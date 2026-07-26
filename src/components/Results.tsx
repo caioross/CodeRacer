@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { RotateCcw, Trophy } from "lucide-react";
+import { RotateCcw, Share2, Trophy } from "lucide-react";
 import type { Player, RoomState } from "@/lib/types";
 import { Chat } from "./Chat";
+import { useToast } from "./ui/Toast";
+import { buildShareText } from "@/lib/share";
 import { formatMs } from "@/lib/utils";
 
 // Metadados por lugar (índice = colocação-1): altura da coluna e medalha.
@@ -132,21 +134,24 @@ export function Results({
 
         {/* actions */}
         <div className="flex flex-col items-center gap-3">
-          {isLeader ? (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={onPlayAgain}
-              className="btn-primary px-6 py-3"
-            >
-              <RotateCcw className="size-4" />
-              Jogar de novo
-            </motion.button>
-          ) : (
-            <div className="text-text-muted text-sm font-mono">
-              <span className="animate-pulse">// aguardando líder reiniciar...</span>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {isLeader ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onPlayAgain}
+                className="btn-primary px-6 py-3"
+              >
+                <RotateCcw className="size-4" />
+                Jogar de novo
+              </motion.button>
+            ) : (
+              <div className="text-text-muted text-sm font-mono">
+                <span className="animate-pulse">// aguardando líder reiniciar...</span>
+              </div>
+            )}
+            {me && <ShareButton me={me} />}
+          </div>
           <Link
             href="/leaderboard"
             className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
@@ -272,6 +277,50 @@ function SoloStat({ label, value }: { label: string; value: string | number }) {
       </div>
       <div className="text-lg font-bold font-mono">{value}</div>
     </div>
+  );
+}
+
+// Convite do loop viral: cada corrida terminada vira um link compartilhável (#22).
+// Ação SECUNDÁRIA de propósito — "Jogar de novo" continua sendo o CTA primário.
+function ShareButton({ me }: { me: Player }) {
+  const toast = useToast();
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => toast.push({ kind: "success", text: "Resultado copiado!" }))
+      .catch(() => toast.push({ kind: "error", text: "Falha ao copiar" }));
+  }
+
+  function onShare() {
+    // `window.location.origin` é a origem real do deploy; SITE.url depende de
+    // NEXT_PUBLIC_SITE_URL estar setada no build e cai num domínio que não é o
+    // de produção quando não está.
+    const url = window.location.origin;
+    const text = buildShareText(me, url);
+    if (typeof navigator.share === "function") {
+      navigator.share({ text, url }).catch((err: unknown) => {
+        // Cancelar não é falhar: se o jogador fechou o sheet nativo ele disse
+        // "não" — copiar assim mesmo seria hostil. Só caímos no clipboard
+        // quando o compartilhamento realmente quebrou.
+        if ((err as { name?: string } | null)?.name !== "AbortError") copyToClipboard(text);
+      });
+      return;
+    }
+    copyToClipboard(text);
+  }
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onShare}
+      aria-label="Compartilhar meu resultado"
+      className="btn-secondary px-6 py-3"
+    >
+      <Share2 className="size-4" />
+      Compartilhar
+    </motion.button>
   );
 }
 
