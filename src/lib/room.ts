@@ -157,7 +157,8 @@ export function clampInt(n: unknown, min: number, max: number): number {
  * humano real (não-objeto, `name` vazio após trim, ou `wpm` fora do inteiro
  * plausível 0..MAX_PLAUSIBLE_WPM) e CLAMPA os demais campos. Campos cosméticos
  * (`id`/`color`/`progress`/`finishedAt`) são preservados para a tela de fim de
- * corrida. O array é limitado a `room.max_players` (teto absoluto 12).
+ * corrida. O array é limitado a `room.max_players` (teto absoluto
+ * `ABSOLUTE_MAX_PLAYERS`).
  *
  * Puro e determinístico — coberto por `scripts/validate-persistence.mjs`.
  */

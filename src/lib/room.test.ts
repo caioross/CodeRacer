@@ -124,7 +124,10 @@ describe("sanitizeResults — clamp de accuracy/errors/place", () => {
 });
 
 describe("sanitizeResults — cap de tamanho do array", () => {
-  const flood = Array.from({ length: 30 }, (_, i) =>
+  // O flood precisa ser MAIOR que ABSOLUTE_MAX_PLAYERS, senão os asserts de teto
+  // passam por tautologia (entram 30, saem 30) e o `break` do cap nunca dispara —
+  // a rede que impede um `finish` forjado de inflar `scores` deixaria de ser testada.
+  const flood = Array.from({ length: ABSOLUTE_MAX_PLAYERS + 10 }, (_, i) =>
     legit({ id: `p${i}`, name: `n${i}`, place: i + 1 })
   );
 

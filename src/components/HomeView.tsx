@@ -373,7 +373,7 @@ export function HomeView() {
           />
           <Feature
             icon={<Users className="size-4 text-neon-cyan" />}
-            title="até 12 jogadores"
+            title={`até ${ABSOLUTE_MAX_PLAYERS} jogadores`}
             text="Compartilhe o código de 6 letras ou o link da sala — gente entra na hora."
           />
           <Feature
