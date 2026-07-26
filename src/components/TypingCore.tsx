@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Target, Timer, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AlarmClock, Target, Timer, Zap } from "lucide-react";
 import { CodeDisplay } from "./CodeDisplay";
 import { CodeEditor } from "./CodeEditor";
 import {
@@ -11,6 +11,15 @@ import {
   computeAccuracy,
   computeProgress
 } from "@/lib/metrics";
+
+// Desistência automática por inatividade (#65) — só no multiplayer (`idleForfeit`).
+// Sem digitar por IDLE_WARN_MS, abre um aviso com contagem de FORFEIT_MS; qualquer
+// tecla cancela e, ao zerar, o jogador desiste sozinho e libera a sala. A detecção
+// vive em refs + um único tick; enquanto se digita não há setState novo por tecla
+// (área sagrada, HANDBOOK §2).
+const IDLE_WARN_MS = 30_000;
+const FORFEIT_MS = 10_000;
+const IDLE_TICK_MS = 500;
 
 // Núcleo de digitação extraído 1:1 de Race.tsx (issue #25): estados, métricas
 // (WPM/precisão/progresso/erros), handleInput, anti-paste e o card de stats —
@@ -27,6 +36,7 @@ export function TypingCore({
   heartbeat = false,
   onStart,
   onAbandon,
+  idleForfeit = false,
   finishedPlaceholder
 }: {
   code: string;
@@ -41,10 +51,19 @@ export function TypingCore({
   /** Practice: disparado no 1º keystroke para frente (inicia o cronômetro). */
   onStart?: () => void;
   onAbandon?: () => void;
+  /** Multiplayer: desiste sozinho após inatividade (#65). No practice fica desligado. */
+  idleForfeit?: boolean;
   /** Copy do placeholder pós-término (repassado ao CodeEditor). */
   finishedPlaceholder?: string;
 }) {
   const iFinished = finishedAt != null;
+  const reduced = useReducedMotion();
+
+  // Inatividade (#65): epoch da última digitação e do início do aviso. Refs para
+  // não re-renderizar por tecla — só o tick mexe em state, e só durante o aviso.
+  const lastActivityRef = useRef<number>(Date.now());
+  const warnStartRef = useRef<number | null>(null);
+  const [idleLeft, setIdleLeft] = useState<number | null>(null);
 
   const [typed, setTyped] = useState("");
   const [errors, setErrors] = useState(0);
@@ -90,9 +109,51 @@ export function TypingCore({
     return () => clearInterval(id);
   }, [heartbeat, iFinished, progress, wpm, accuracy, errors, onProgress]);
 
+  // Cancela o aviso de inatividade e reancora o relógio de ociosidade. Só um
+  // write de ref no caminho quente; o setState só dispara se havia aviso aberto.
+  const markActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    if (warnStartRef.current !== null) {
+      warnStartRef.current = null;
+      setIdleLeft(null);
+    }
+  }, []);
+
+  // Tick único da inatividade (#65), só no multiplayer e enquanto eu corro. Fora
+  // do aviso ele apenas COMPARA refs (sem setState → sem re-render competindo com
+  // a textarea); só passa a mexer em state quando o aviso está de fato aberto.
+  useEffect(() => {
+    if (!idleForfeit || iFinished || startedAt == null) {
+      warnStartRef.current = null;
+      setIdleLeft(null);
+      return;
+    }
+    lastActivityRef.current = Date.now(); // (re)ancora ao (re)entrar na corrida
+    const t = setInterval(() => {
+      const now = Date.now();
+      if (warnStartRef.current === null) {
+        if (now - lastActivityRef.current >= IDLE_WARN_MS) {
+          warnStartRef.current = now;
+          setIdleLeft(Math.ceil(FORFEIT_MS / 1000));
+        }
+        return;
+      }
+      const remaining = Math.ceil((FORFEIT_MS - (now - warnStartRef.current)) / 1000);
+      if (remaining <= 0) {
+        warnStartRef.current = null;
+        setIdleLeft(null);
+        onAbandon?.();
+      } else {
+        setIdleLeft(remaining);
+      }
+    }, IDLE_TICK_MS);
+    return () => clearInterval(t);
+  }, [idleForfeit, iFinished, startedAt, onAbandon]);
+
   const handleInput = useCallback(
     (next: string) => {
       if (iFinished) return;
+      markActivity();
       // Only consider growth (typing forward). Allow backspace by trimming.
       if (next.length > code.length) next = next.slice(0, code.length);
 
@@ -114,7 +175,7 @@ export function TypingCore({
       }
       setTyped(next);
     },
-    [code, typed, iFinished, onStart]
+    [code, typed, iFinished, onStart, markActivity]
   );
 
   // Disable copy/paste so it's fair
@@ -124,6 +185,8 @@ export function TypingCore({
 
   return (
     <div className="space-y-4">
+      <IdleWarning secondsLeft={idleLeft} reduced={reduced} />
+
       {/* code + input */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <CodeDisplay code={code} typed={typed} language={language} />
@@ -185,6 +248,49 @@ export function TypingCore({
         </div>
       </div>
     </div>
+  );
+}
+
+// Aviso de inatividade com contagem regressiva (#65). `secondsLeft === null` =
+// sem aviso. `aria-live="assertive"` para o leitor de tela anunciar o alerta.
+function IdleWarning({
+  secondsLeft,
+  reduced
+}: {
+  secondsLeft: number | null;
+  reduced: boolean | null;
+}) {
+  return (
+    <AnimatePresence>
+      {secondsLeft !== null && (
+        <motion.div
+          initial={reduced ? false : { opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
+          role="alert"
+          aria-live="assertive"
+          className="card border-neon-amber/50 bg-neon-amber/[0.06] p-4 flex items-center gap-4"
+        >
+          <span className="text-neon-amber shrink-0">
+            <AlarmClock className="size-6" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-bold text-neon-amber">⚠️ Você está inativo</p>
+            <p className="text-sm text-text mt-0.5 font-mono">
+              Digite qualquer tecla para continuar na corrida.
+            </p>
+          </div>
+          <div className="ml-auto text-right shrink-0">
+            <div className="text-[10px] uppercase tracking-wider text-text-muted font-mono">
+              desistência em
+            </div>
+            <div className="font-mono font-bold text-3xl leading-none text-neon-amber tabular-nums">
+              {secondsLeft}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
