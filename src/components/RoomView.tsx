@@ -22,10 +22,8 @@ export function RoomView({ roomCode }: { roomCode: string }) {
   const onError = useCallback((msg: string) => toast.push({ kind: "error", text: msg }), [toast]);
   const onLeave = useCallback(() => router.push("/"), [router]);
 
-  const { phase, meId, room, players, isLeader, chat, countdownN, join, actions } = useRoom(
-    roomCode,
-    { onError, onLeave }
-  );
+  const { phase, meId, room, players, isLeader, chat, countdownN, voteTally, myVote, join, actions } =
+    useRoom(roomCode, { onError, onLeave });
 
   // Adapt the realtime state to the RoomState shape the views already expect.
   const compatRoom = useMemo<RoomState | null>(() => {
@@ -95,11 +93,14 @@ export function RoomView({ roomCode }: { roomCode: string }) {
             room={compatRoom}
             meId={meId}
             isLeader={isLeader}
+            voteTally={voteTally}
+            myVote={myVote}
             onUpdateSettings={actions.updateSettings}
             onStart={actions.startRace}
             onChat={actions.sendChat}
             onSetReady={actions.setReady}
             onKick={actions.kick}
+            onVote={actions.castVote}
           />
         )}
 

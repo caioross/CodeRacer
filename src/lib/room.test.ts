@@ -9,7 +9,9 @@ import {
   ABSOLUTE_MAX_PLAYERS,
   RACE_IDLE_MS,
   RACE_TIMEOUT_BASE_MS,
-  RACE_TIMEOUT_MAX_MS
+  RACE_TIMEOUT_MAX_MS,
+  tallyVotes,
+  pickVoteWinner
 } from "./room";
 
 // Fronteira anti-cheat do leaderboard: a engine é client-side, então a API roda
@@ -264,5 +266,48 @@ describe("shouldFinishRace — a corrida continua", () => {
     const solo = [running(START + 1_000)];
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT })).toBe(true);
+  });
+});
+
+// Votação de linguagem (#72): decide a linguagem da próxima corrida. Puro e
+// determinístico (o sorteio de empate recebe um `rng` injetável no teste).
+describe("tallyVotes", () => {
+  it("conta votos por linguagem", () => {
+    expect(tallyVotes({ a: "python", b: "python", c: "rust" })).toEqual({ python: 2, rust: 1 });
+  });
+
+  it("ignora votos em linguagens inexistentes ou não-string", () => {
+    expect(tallyVotes({ a: "cobiscript", b: 42, c: null, d: "go" })).toEqual({ go: 1 });
+  });
+
+  it("mapa vazio → tally vazio", () => {
+    expect(tallyVotes({})).toEqual({});
+  });
+});
+
+describe("pickVoteWinner", () => {
+  it("sem votos → linguagem padrão (fallback)", () => {
+    expect(pickVoteWinner({}, "javascript")).toBe("javascript");
+    expect(pickVoteWinner({ a: "naoexiste" }, "javascript")).toBe("javascript");
+  });
+
+  it("vence a mais votada", () => {
+    expect(pickVoteWinner({ a: "python", b: "python", c: "rust" }, "go")).toBe("python");
+  });
+
+  it("empate → sorteia entre as empatadas (rng injetável)", () => {
+    const votes = { a: "python", b: "rust" }; // 1×1, top = [python, rust]
+    expect(pickVoteWinner(votes, "go", () => 0)).toBe("python"); // índice 0
+    expect(pickVoteWinner(votes, "go", () => 0.99)).toBe("rust"); // índice 1
+  });
+
+  it("empate nunca escapa do conjunto empatado nem estoura o índice", () => {
+    const votes = { a: "python", b: "rust", c: "go" }; // triplo empate
+    const winner = pickVoteWinner(votes, "javascript", () => 1); // rng no limite
+    expect(["python", "rust", "go"]).toContain(winner);
+  });
+
+  it("um voto isolado vence mesmo contra o fallback", () => {
+    expect(pickVoteWinner({ a: "elixir" }, "javascript")).toBe("elixir");
   });
 });

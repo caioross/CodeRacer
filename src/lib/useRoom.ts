@@ -7,6 +7,9 @@ import {
   colorForId,
   newPlayerId,
   shouldFinishRace,
+  pickVoteWinner,
+  tallyVotes,
+  isValidLang,
   RACE_DECISION_TICK_MS,
   type ChatMsg,
   type LivePlayer,
@@ -15,6 +18,7 @@ import {
   type ResultRow,
   type RoomRow
 } from "./room";
+import type { LangId } from "./languages";
 
 const SESSION_KEY = (code: string) => `coderacer:room:${code}`;
 const NAME_KEY = "coderacer:name";
@@ -37,6 +41,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const [presence, setPresence] = useState<Record<string, PresenceMeta>>({});
   const [progress, setProgress] = useState<Record<string, ProgressMsg>>({});
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
+  // Votação de linguagem (#72): playerId → LangId escolhida. Broadcast, como o ready.
+  const [votesMap, setVotesMap] = useState<Record<string, LangId>>({});
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
   const [joinName, setJoinName] = useState<string | null>(null);
@@ -47,6 +53,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const myFinishRef = useRef<number | null>(null);
   const myAbandonRef = useRef(false);
   const myReadyRef = useRef(false);
+  const myVoteRef = useRef<LangId | null>(null);
   const myMetaRef = useRef<PresenceMeta | null>(null);
   const finishPostedRef = useRef(false);
   // Epoch do último `progress` de cada jogador — alimenta o critério de
@@ -180,9 +187,12 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
             someoneElse = true;
           }
         }
-        // Broadcast has no replay — re-announce my "ready" so newcomers see it.
+        // Broadcast has no replay — re-announce my "ready"/"vote" so newcomers see them.
         if (someoneElse && myReadyRef.current) {
           channel.send({ type: "broadcast", event: "ready", payload: { id, ready: true } });
+        }
+        if (someoneElse && myVoteRef.current) {
+          channel.send({ type: "broadcast", event: "vote", payload: { id, language: myVoteRef.current } });
         }
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
@@ -220,6 +230,13 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         const m = payload as { id?: string; ready?: boolean };
         if (!m?.id) return;
         setReadyMap(prev => ({ ...prev, [m.id as string]: !!m.ready }));
+      });
+
+      // Voto de linguagem (#72) — mesmo transporte confiável do ready.
+      channel.on("broadcast", { event: "vote" }, ({ payload }) => {
+        const m = payload as { id?: string; language?: unknown };
+        if (!m?.id || !isValidLang(m.language)) return;
+        setVotesMap(prev => ({ ...prev, [m.id as string]: m.language as LangId }));
       });
 
       channel.on(
@@ -295,20 +312,24 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         myFinishRef.current = null;
         myAbandonRef.current = false;
         myReadyRef.current = false;
+        myVoteRef.current = null;
         finishPostedRef.current = false;
         lastActivityRef.current = {};
         setProgress({});
         setReadyMap({});
+        setVotesMap({});
       }
     }
     if (room?.status === "lobby") {
       myFinishRef.current = null;
       myAbandonRef.current = false;
       myReadyRef.current = false;
+      myVoteRef.current = null;
       finishPostedRef.current = false;
       lastActivityRef.current = {};
       setProgress({});
       setReadyMap({});
+      setVotesMap({});
     }
   }, [room?.start_at, room?.status]);
 
@@ -349,6 +370,19 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   }, [presence, progress, readyMap]);
 
   const isLeader = !!room && !!meId && room.leader_id === meId;
+
+  // Votação de linguagem (#72): só contam votos de quem AINDA está presente —
+  // um jogador que saiu ou foi kickado não deve continuar pesando no resultado.
+  const activeVotes = useMemo(() => {
+    const active: Record<string, LangId> = {};
+    for (const [pid, lang] of Object.entries(votesMap)) {
+      if (presence[pid]) active[pid] = lang;
+    }
+    return active;
+  }, [votesMap, presence]);
+  const voteTally = useMemo(() => tallyVotes(activeVotes), [activeVotes]);
+  const myVote: LangId | null = (meId && votesMap[meId]) || null;
+
   const countdownN =
     room?.status === "racing" && startMs && now < startMs
       ? Math.max(1, Math.ceil((startMs - now) / 1000))
@@ -510,11 +544,34 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     [postAction]
   );
 
+  // Registrar/trocar meu voto de linguagem (#72) — broadcast confiável + otimista.
+  const castVote = useCallback((language: LangId) => {
+    const id = meIdRef.current;
+    const ch = channelRef.current;
+    if (!id || !ch || !isValidLang(language)) return;
+    myVoteRef.current = language;
+    setVotesMap(prev => ({ ...prev, [id]: language })); // otimista
+    ch.send({ type: "broadcast", event: "vote", payload: { id, language } });
+  }, []);
+
   const updateSettings = useCallback(
     (settings: Record<string, unknown>) => postAction("settings", { settings }),
     [postAction]
   );
-  const startRace = useCallback(() => postAction("start"), [postAction]);
+
+  // Ao iniciar, o líder resolve a linguagem vencedora da votação (#72) e a grava
+  // em `rooms.language` (via `settings`) ANTES de dar `start` — que lê essa linha
+  // para sortear o snippet. Sem votos, mantém a linguagem padrão da sala.
+  const startRace = useCallback(async () => {
+    const fallback = room?.language;
+    if (fallback) {
+      const winner = pickVoteWinner(activeVotes, fallback);
+      if (winner !== fallback) {
+        await postAction("settings", { settings: { language: winner } });
+      }
+    }
+    return postAction("start");
+  }, [postAction, room?.language, activeVotes]);
   const resetToLobby = useCallback(() => postAction("reset"), [postAction]);
 
   return {
@@ -525,6 +582,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     isLeader,
     chat,
     countdownN,
+    voteTally,
+    myVote,
     join,
     actions: {
       updateSettings,
@@ -534,7 +593,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       abandon,
       sendChat,
       setReady,
-      kick
+      kick,
+      castVote
     }
   };
 }
