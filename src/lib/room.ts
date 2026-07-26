@@ -23,6 +23,8 @@ export interface RoomRow {
   snippet: RoomSnippet | null;
   start_at: string | null; // ISO; moment typing begins
   results: ResultRow[] | null;
+  /** playerIds removidos pelo líder — verdade durável da expulsão (ver #39). */
+  kicked_ids: string[];
   created_at: string;
   updated_at: string;
 }
@@ -268,6 +270,65 @@ export function sanitizeResults(
     });
   }
   return out;
+}
+
+// ─── Autoridade de expulsão (fronteira pura, espelhada no validator) ──────────
+// Kick trafegava só por broadcast peer-to-peer, sem autoridade — qualquer
+// assinante do canal expulsava qualquer um (#39). A verdade agora vive no
+// servidor: a rota valida `canKick` e registra o alvo em `rooms.kicked_ids`; a
+// vítima descobre a remoção pela subscription postgres_changes, NUNCA por
+// broadcast. Mitiga o vetor anônimo; a fechadura forte (token por jogador) é #6.
+
+/**
+ * Teto de tamanho de um playerId aceito como alvo. Ids são UUID (36 chars);
+ * 64 dá folga sem deixar a coluna virar depósito de texto arbitrário.
+ * (Quórum do PR Doctor: sem teto, `kicked_ids` era um campo durável e
+ * gravável que inflava sem limite — e cada UPDATE refaz o fan-out da linha
+ * inteira para todo assinante `postgres_changes` da sala.)
+ */
+export const MAX_KICKED_ID_LEN = 64;
+/** Teto de expulsos por sala — acima do teto absoluto de jogadores (12). */
+export const MAX_KICKED = 24;
+
+/**
+ * Só o líder legítimo da sala (verdade = `room.leader_id`) pode remover um
+ * jogador, e o alvo precisa ser um id não-vazio, dentro do teto de tamanho e
+ * diferente do próprio líder. Puro e determinístico — coberto por
+ * `scripts/validate-persistence.mjs`.
+ */
+export function canKick(
+  room: Pick<RoomRow, "leader_id"> | null | undefined,
+  playerId: string,
+  targetId: string
+): boolean {
+  if (!room || typeof playerId !== "string" || room.leader_id !== playerId) return false;
+  if (typeof targetId !== "string") return false;
+  const t = targetId.trim();
+  // Alvo vazio, gigante (inflação da linha) ou o próprio líder → rejeitado.
+  return t.length > 0 && t.length <= MAX_KICKED_ID_LEN && t !== room.leader_id;
+}
+
+/**
+ * Acrescenta `targetId` à lista durável de expulsos de forma idempotente (sem
+ * duplicar). Alvo vazio, acima do teto de tamanho, já presente ou lista cheia
+ * → lista de origem inalterada (no-op seguro). Puro e determinístico.
+ */
+export function addKickedId(current: string[] | null | undefined, targetId: string): string[] {
+  const base = Array.isArray(current)
+    ? current.filter(x => typeof x === "string" && x.length <= MAX_KICKED_ID_LEN)
+    : [];
+  const t = typeof targetId === "string" ? targetId.trim() : "";
+  if (!t || t.length > MAX_KICKED_ID_LEN || base.includes(t)) return base;
+  // Lista cheia: no-op. O crescimento da linha da sala é limitado por
+  // construção — nenhuma sequência de requests infla `rooms` sem teto.
+  if (base.length >= MAX_KICKED) return base;
+  return [...base, t];
+}
+
+/** A lista de expulsos está cheia? (rota devolve erro honesto em vez de `ok` mudo.) */
+export function kickedListFull(current: string[] | null | undefined): boolean {
+  const base = Array.isArray(current) ? current.filter(x => typeof x === "string") : [];
+  return base.length >= MAX_KICKED;
 }
 
 const PLAYER_COLORS = [

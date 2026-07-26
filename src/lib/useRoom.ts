@@ -57,6 +57,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const claimingRef = useRef(false);
   const lastSentRef = useRef(0);
   const lastStartRef = useRef<string | null>(null);
+  // Espelhos (não-reativos) para os handlers do canal, que fecham sobre o estado
+  // uma única vez: resolvem o NOME da vítima e evitam anunciar o mesmo kick 2x.
+  const presenceRef = useRef<Record<string, PresenceMeta>>({});
+  const roomRef = useRef<RoomRow | null>(null);
+  const announcedKicksRef = useRef<Set<string>>(new Set());
   const onErrorRef = useRef(onError);
   const onLeaveRef = useRef(onLeave);
   onErrorRef.current = onError;
@@ -137,8 +142,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           onLeaveRef.current?.();
           return;
         }
-        setRoom(json.room as RoomRow);
-        lastStartRef.current = (json.room as RoomRow).start_at;
+        const seeded = json.room as RoomRow;
+        roomRef.current = seeded;
+        setRoom(seeded);
+        lastStartRef.current = seeded.start_at;
+        // Kicks já persistidos ao entrar são passado — não os anuncie como novos.
+        for (const k of Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : []) {
+          announcedKicksRef.current.add(k);
+        }
       } catch {
         if (cancelled) return;
         fail("Não foi possível carregar a sala");
@@ -158,6 +169,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           const metas = state[key];
           if (metas && metas[0]) map[key] = metas[0];
         }
+        presenceRef.current = map;
         setPresence(map);
       });
       channel.on("presence", { event: "join" }, ({ newPresences }) => {
@@ -175,7 +187,18 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
         for (const p of leftPresences as unknown as PresenceMeta[]) {
-          pushSystem(`${p.name} saiu`);
+          const { id: leftId, name: leftName } = p;
+          // Expulso pelo líder já ganhou a própria notificação ("removido") —
+          // não duplique com um genérico "saiu". A ordem de entrega entre o
+          // `postgres_changes` (que preenche `roomRef.kicked_ids`) e este evento
+          // de presence NÃO é garantida pelo Realtime; se o leave chegar primeiro,
+          // uma checagem síncrona veria a lista antiga e anunciaria os dois.
+          // Adiar o "saiu" e reconferir deixa a verdade da expulsão assentar.
+          setTimeout(() => {
+            const kicked = roomRef.current?.kicked_ids;
+            if (Array.isArray(kicked) && kicked.includes(leftId)) return;
+            pushSystem(`${leftName} saiu`);
+          }, 400);
         }
       });
 
@@ -199,24 +222,38 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setReadyMap(prev => ({ ...prev, [m.id as string]: !!m.ready }));
       });
 
-      // Leader kicked someone — if it's me, leave the room.
-      channel.on("broadcast", { event: "kick" }, ({ payload }) => {
-        const targetId = (payload as { id?: string })?.id;
-        if (targetId && targetId === id) {
-          try {
-            sessionStorage.removeItem(SESSION_KEY(code));
-          } catch {}
-          fail("Você foi removido da sala pelo líder");
-          onLeaveRef.current?.();
-        }
-      });
-
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
         payload => {
           const next = payload.new as RoomRow;
-          if (next && next.code) setRoom(next);
+          if (!next || !next.code) return;
+          const kicks = Array.isArray(next.kicked_ids) ? next.kicked_ids : [];
+          // Expulsão com autoridade (#39): a saída só é definitiva quando o
+          // servidor registra meu id em `kicked_ids` — nunca por broadcast.
+          if (kicks.includes(id)) {
+            try {
+              sessionStorage.removeItem(SESSION_KEY(code));
+            } catch {}
+            fail("Você foi removido da sala pelo líder");
+            onLeaveRef.current?.();
+            return;
+          }
+          // Notifica TODA a sala (#66) sobre cada expulsão nova, resolvendo o
+          // nome pela presence do momento (a vítima ainda não saiu do canal).
+          // Rider do mesmo update autoritativo — nenhum broadcast novo a confiar.
+          if (kicks.length === 0) {
+            announcedKicksRef.current.clear(); // `reset` zerou os kicks
+          } else {
+            for (const kid of kicks) {
+              if (announcedKicksRef.current.has(kid)) continue;
+              announcedKicksRef.current.add(kid);
+              const nome = presenceRef.current[kid]?.name;
+              if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
+            }
+          }
+          roomRef.current = next;
+          setRoom(next);
         }
       );
 
@@ -463,12 +500,15 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     ch.send({ type: "broadcast", event: "ready", payload: { id, ready } });
   }, []);
 
-  // Leader removes a player: broadcast a kick the target obeys by leaving.
-  const kick = useCallback((targetId: string) => {
-    const ch = channelRef.current;
-    if (!ch || !targetId) return;
-    ch.send({ type: "broadcast", event: "kick", payload: { id: targetId } });
-  }, []);
+  // Leader removes a player via the server (#39): the API checks authority and
+  // records the target in `kicked_ids`; the victim leaves on postgres_changes.
+  const kick = useCallback(
+    (targetId: string) => {
+      if (!targetId) return;
+      return postAction("kick", { targetId });
+    },
+    [postAction]
+  );
 
   const updateSettings = useCallback(
     (settings: Record<string, unknown>) => postAction("settings", { settings }),

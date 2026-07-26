@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { X } from "lucide-react";
 import type { Player } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -15,10 +16,15 @@ function classify(p: Player) {
 
 export function RaceTrack({
   players,
-  meId
+  meId,
+  leaderId,
+  onKick
 }: {
   players: Player[];
   meId: string;
+  leaderId?: string;
+  /** Presente só para o líder: expulsa um griefer sem sair da corrida (#66). */
+  onKick?: (targetId: string) => void;
 }) {
   // Finished first (by place), then who's still racing (by progress), then who gave up.
   const sorted = [...players].sort((a, b) => {
@@ -96,6 +102,16 @@ export function RaceTrack({
                     <span className="ml-1 font-semibold text-neon-red/80">desistiu</span>
                   )}
                 </span>
+                {onKick && !isMe && p.id !== leaderId && (
+                  <button
+                    onClick={() => onKick(p.id)}
+                    title={`Remover ${p.name} da sala`}
+                    aria-label={`Remover ${p.name} da sala`}
+                    className="grid size-4 shrink-0 place-items-center rounded-full border border-neon-red/40 text-neon-red opacity-60 transition hover:bg-neon-red/15 hover:opacity-100"
+                  >
+                    <X className="size-2.5" />
+                  </button>
+                )}
               </div>
               <div
                 className={cn(
