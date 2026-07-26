@@ -108,7 +108,26 @@ Variáveis de ambiente (copie `.env.example` → `.env.local` — e replique na 
 | `DATABASE_URL` | Connection string do Postgres (usada por `pnpm db:migrate`). |
 | `NEXT_PUBLIC_SITE_URL` | URL pública p/ SEO (canonical, Open Graph, sitemap). Sem barra no final. |
 
-Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm db:migrate`.
+Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm db:migrate`.
+
+#### 🔬 Harness das telas pós-corrida (só em dev)
+
+A tela de **Resultado/pódio** só aparece depois de uma corrida completa (lobby → countdown →
+racing → finished), o que torna caro verificá-la no browser. Com `pnpm dev` rodando, abra
+**http://localhost:3000/harness/results** para montá-la direto, com dados sintéticos:
+
+| Cenário | URL | Para quê |
+|:--|:--|:--|
+| 0 jogadores | `?n=empty` | estado vazio (ninguém terminou) |
+| 1 | `?n=solo` | resultado "herói" solo |
+| 2 | `?n=duo` | pódio de 2 colunas |
+| 3 | `?n=trio` | pódio completo (padrão) |
+| 5 | `?n=crowd` | com desistentes na tabela |
+
+Adicione `&leader=0` para ver a tela pelos olhos de quem **não** é líder. Os fixtures ficam em
+`src/components/dev/results.fixtures.ts` e são tipados por `src/lib/types.ts`. **A rota não
+existe em produção:** o gate é `NODE_ENV` (variável de build), então o `import()` do harness é
+eliminado pelo webpack e `/harness/results` responde 404 no build de produção.
 
 ### 🧠 Como o WPM é calculado
 

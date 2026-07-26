@@ -43,6 +43,7 @@ export function Results({
   const me = ranked.find(p => p.id === meId);
 
   // Ordem na tela: 2º, 1º, 3º (só as colocações que têm jogador).
+  const empty = ranked.length === 0;
   const solo = ranked.length === 1;
   const duo = ranked.length === 2;
   const screenOrder = duo ? [1, 0] : [1, 0, 2];
@@ -73,7 +74,9 @@ export function Results({
         </div>
 
         {/* pódio (ou resultado herói quando há um só corredor) */}
-        {solo ? (
+        {empty ? (
+          <EmptyPodium />
+        ) : solo ? (
           <SoloHero
             player={podium[0]}
             startedAt={startedAt}
@@ -171,6 +174,19 @@ export function Results({
           />
         </div>
       </aside>
+    </div>
+  );
+}
+
+// Sala terminou sem ninguém na lista (todos saíram antes do fim). Sem este guard o
+// pódio indexaria `podium[1]` num array vazio e a tela quebrava com TypeError.
+function EmptyPodium() {
+  return (
+    <div className="card max-w-md mx-auto p-6 text-center">
+      <div className="text-4xl mb-2">🏁</div>
+      <div className="text-sm font-mono text-text-muted">
+        // ninguém terminou esta corrida
+      </div>
     </div>
   );
 }
