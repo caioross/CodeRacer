@@ -203,6 +203,41 @@ export function resolveDifficulty(
   return isValidDifficulty(raw) ? { ok: true, value: raw } : { ok: false };
 }
 
+// ─── Votação de linguagem na sala de espera (#72) ─────────────────────────────
+// A linguagem da próxima corrida é decidida coletivamente: cada jogador tem um
+// voto (mutável até o start). No start o líder resolve o vencedor e escreve em
+// `rooms.language` via a action `settings` — a fonte de verdade continua sendo a
+// linha da sala, então todos os clientes concordam. Puro e testável.
+
+/** Votos válidos por linguagem (ignora votos em linguagens inexistentes). */
+export function tallyVotes(votes: Record<string, unknown>): Record<string, number> {
+  const tally: Record<string, number> = {};
+  for (const lang of Object.values(votes)) {
+    if (!isValidLang(lang)) continue;
+    tally[lang] = (tally[lang] ?? 0) + 1;
+  }
+  return tally;
+}
+
+/**
+ * Linguagem vencedora da votação: a mais votada; em caso de empate, sorteio entre
+ * as empatadas (`rng`, injetável para teste). Sem votos válidos → `fallback` (a
+ * linguagem padrão da sala), então o fluxo nunca fica sem linguagem.
+ */
+export function pickVoteWinner(
+  votes: Record<string, unknown>,
+  fallback: LangId,
+  rng: () => number = Math.random
+): LangId {
+  const tally = tallyVotes(votes);
+  const entries = Object.entries(tally);
+  if (entries.length === 0) return fallback;
+  const max = Math.max(...entries.map(([, n]) => n));
+  const top = entries.filter(([, n]) => n === max).map(([lang]) => lang as LangId);
+  if (top.length === 1) return top[0];
+  return top[Math.min(top.length - 1, Math.floor(rng() * top.length))]; // sorteio
+}
+
 // ─── Sanitização de resultados (fronteira anti-cheat do leaderboard) ──────────
 // A engine de digitação é client-side, então a API roda com service_role e é o
 // único guardião das tabelas `matches`/`scores` (leaderboard global público).
