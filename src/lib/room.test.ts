@@ -3,6 +3,7 @@ import {
   sanitizeResults,
   clampInt,
   raceTimeoutMs,
+  roomUpdateOutcome,
   shouldFinishRace,
   MAX_PLAUSIBLE_WPM,
   MAX_NAME_LEN,
@@ -267,5 +268,49 @@ describe("shouldFinishRace — a corrida continua", () => {
     const solo = [running(START + 1_000)];
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT })).toBe(true);
+  });
+});
+
+// #56 — as mutações de sala respondiam `ok: true` sem olhar o `error` do
+// supabase-js (que devolve `{ error }` em vez de lançar). O líder via "partida
+// iniciada" com a sala parada no lobby. Esta é a decisão que a rota consulta.
+describe("roomUpdateOutcome", () => {
+  it("escrita confirmada (≥1 linha) → ok, sem mensagem", () => {
+    const out = roomUpdateOutcome({ rows: 1 });
+    expect(out).toEqual({ ok: true, status: 200 });
+  });
+
+  it("erro do banco → 500 com copy neutra (não vaza detalhe de schema)", () => {
+    const out = roomUpdateOutcome({
+      error: { message: 'new row violates check constraint "rooms_difficulty_chk"' },
+      rows: 0
+    });
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe(500);
+    expect(out.error).toBe("Não foi possível atualizar a sala");
+    // O texto do PostgREST vira toast no cliente (useRoom.ts) — nunca pode passar.
+    expect(out.error).not.toMatch(/constraint|rooms_|violates/);
+  });
+
+  it("erro tem precedência sobre a contagem de linhas", () => {
+    // Com anon+RLS o `.select()` pode voltar vazio junto com o erro; 500 é a
+    // resposta certa — 409 afirmaria que a sala sumiu, o que não sabemos.
+    expect(roomUpdateOutcome({ error: { message: "timeout" }, rows: 3 }).status).toBe(500);
+  });
+
+  it("zero linhas confirmadas → 409 neutro, nunca 'Sala não encontrada'", () => {
+    // `getServerSupabase` cai para a chave anon sem service_role: 0 linhas pode
+    // ser SELECT negado por RLS, não sala apagada. Não afirmamos o que não sabemos.
+    for (const rows of [0, null, undefined]) {
+      const out = roomUpdateOutcome({ rows });
+      expect(out.ok).toBe(false);
+      expect(out.status).toBe(409);
+      expect(out.error).toBe("Não foi possível confirmar a alteração");
+    }
+  });
+
+  it("nunca emite ok sem evidência de escrita (AC da #56)", () => {
+    const semEvidencia = [{ rows: 0 }, { rows: null }, { error: { message: "x" }, rows: 1 }];
+    for (const res of semEvidencia) expect(roomUpdateOutcome(res).ok).toBe(false);
   });
 });

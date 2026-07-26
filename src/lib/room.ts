@@ -354,3 +354,35 @@ export function newPlayerId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+/** Resposta que a rota deve emitir depois de tentar escrever na sala (#56). */
+export interface RoomUpdateOutcome {
+  ok: boolean;
+  status: number;
+  /** Copy voltada ao jogador (o detalhe técnico fica no log do servidor). */
+  error?: string;
+}
+
+/**
+ * Decide, a partir do resultado de um `UPDATE` em `rooms`, se a escrita pode ser
+ * anunciada como sucesso. As mutações de sala respondiam `ok: true` sem olhar o
+ * `error` do supabase-js — que devolve `{ error }` em vez de lançar —, então
+ * constraint violada, RLS ou timeout viravam "deu certo" na tela do líder (#56).
+ *
+ * Regras (puro e determinístico, coberto por `room.test.ts`):
+ * - `error` presente ⇒ 500 e copy neutra; o detalhe do PostgREST NUNCA volta ao
+ *   cliente (`useRoom.ts` exibe `error` em toast — seria schema na tela do jogador).
+ * - zero linhas confirmadas ⇒ 409 "não foi possível confirmar". Não afirmamos
+ *   "sala não encontrada": `getServerSupabase` cai para a chave anon quando não há
+ *   service_role, e aí 0 linhas pode ser SELECT negado por RLS, não sala apagada.
+ * - ≥1 linha ⇒ ok.
+ */
+export function roomUpdateOutcome(res: {
+  error?: unknown;
+  rows?: number | null;
+}): RoomUpdateOutcome {
+  if (res.error) return { ok: false, status: 500, error: "Não foi possível atualizar a sala" };
+  if (!res.rows || res.rows < 1)
+    return { ok: false, status: 409, error: "Não foi possível confirmar a alteração" };
+  return { ok: true, status: 200 };
+}
