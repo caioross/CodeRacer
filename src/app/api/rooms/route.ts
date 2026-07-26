@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { customAlphabet } from "nanoid";
 import { getServerSupabase } from "@/lib/supabase";
+import { resolveDifficulty, resolveLang, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,23 @@ export async function POST(req: Request) {
   }
 
   const settings = body?.settings || {};
-  const maxPlayers = Math.min(Math.max(Number(settings.maxPlayers) || 6, 2), 12);
+  // Allowlist de fronteira: valor presente inválido → 400 (não troca em silêncio);
+  // ausente cai no default. Impede injeção de linguagem/dificuldade no leaderboard.
+  const lang = resolveLang(settings.language, "javascript");
+  if (!lang.ok) {
+    return NextResponse.json(
+      { ok: false, error: "language inválido — use uma das linguagens suportadas" },
+      { status: 400 }
+    );
+  }
+  const difficulty = resolveDifficulty(settings.difficulty, "medium");
+  if (!difficulty.ok) {
+    return NextResponse.json(
+      { ok: false, error: "difficulty inválido — use easy, medium ou hard" },
+      { status: 400 }
+    );
+  }
+  const maxPlayers = Math.min(Math.max(Number(settings.maxPlayers) || 6, 2), ABSOLUTE_MAX_PLAYERS);
 
   // Retry a couple of times on the (very unlikely) code collision.
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -55,8 +72,8 @@ export async function POST(req: Request) {
         code,
         status: "lobby",
         leader_id: playerId,
-        language: settings.language || "javascript",
-        difficulty: settings.difficulty || "medium",
+        language: lang.value,
+        difficulty: difficulty.value,
         max_players: maxPlayers,
         is_public: !!body?.isPublic
       })

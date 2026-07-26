@@ -33,7 +33,15 @@ export function Chat({
         <span className="label">// chat</span>
         <span className="text-[10px] text-text-dim">{messages.length} msgs</span>
       </div>
-      <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 text-sm">
+      {/* Altura limitada + rolagem interna (issue #70): sem um teto, o chat cresce
+          com as mensagens e empurra o resto da página. No desktop (lg) o `<aside>`
+          já limita a altura, então soltamos o teto e deixamos o flex preencher;
+          abaixo de lg (layout empilhado, sem esse limite) o `max-h-[45vh]` mantém
+          o painel estável e rola por dentro. `min-h-0` garante o scroll no flex. */}
+      <div
+        ref={listRef}
+        className="flex-1 min-h-0 max-h-[45vh] lg:max-h-none overflow-y-auto px-3 py-2 space-y-1.5 text-sm"
+      >
         <AnimatePresence initial={false}>
           {messages.map(m => {
             const isSystem = m.system || m.playerId === "system";

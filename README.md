@@ -55,8 +55,8 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 
 | | Recurso | Detalhe |
 |:--:|:--|:--|
-| 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **12 jogadores**. |
-| 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — em **fácil / médio / difícil**. |
+| 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **30 jogadores**. |
+| 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — nos níveis **🟢 Júnior / 🔵 Pleno / 🟣 Sênior**. |
 | 📊 | **Métricas ao vivo** | **WPM**, **precisão**, **erros** e progresso por jogador, atualizados a cada tecla. |
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
 | 🌍 | **Placar global** | Toda partida terminada é salva no **Supabase** — ranking de recorde de WPM por jogador em `/leaderboard`. |
@@ -108,7 +108,39 @@ Variáveis de ambiente (copie `.env.example` → `.env.local` — e replique na 
 | `DATABASE_URL` | Connection string do Postgres (usada por `pnpm db:migrate`). |
 | `NEXT_PUBLIC_SITE_URL` | URL pública p/ SEO (canonical, Open Graph, sitemap). Sem barra no final. |
 
-Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm db:migrate`.
+Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm db:migrate`.
+
+#### 🔬 Harness das telas pós-corrida (só em dev)
+
+A tela de **Resultado/pódio** só aparece depois de uma corrida completa (lobby → countdown →
+racing → finished), o que torna caro verificá-la no browser. Com `pnpm dev` rodando, abra
+**http://localhost:3000/harness/results** para montá-la direto, com dados sintéticos:
+
+| Cenário | URL | Para quê |
+|:--|:--|:--|
+| 0 jogadores | `?n=empty` | estado vazio (ninguém terminou) |
+| 1 | `?n=solo` | resultado "herói" solo |
+| 2 | `?n=duo` | pódio de 2 colunas |
+| 3 | `?n=trio` | pódio completo (padrão) |
+| 5 | `?n=crowd` | com desistentes na tabela |
+
+Adicione `&leader=0` para ver a tela pelos olhos de quem **não** é líder. Os fixtures ficam em
+`src/components/dev/results.fixtures.ts` e são tipados por `src/lib/types.ts`. **A rota não
+existe em produção:** o gate é `NODE_ENV` (variável de build), então o `import()` do harness é
+eliminado pelo webpack e `/harness/results` responde 404 no build de produção.
+
+A **corrida em si** tem o mesmo problema — só existe atrás de uma sala com Realtime, o que
+tornava o layout mobile impossível de medir sem jogar. Abra
+**http://localhost:3000/harness/race** para montá-la com dados sintéticos:
+
+| Cenário | URL | Para quê |
+|:--|:--|:--|
+| 4 jogadores | `?n=pelotao` | pista cheia (padrão) |
+| 2 jogadores | `?n=duo` | o caso mais comum no mobile |
+
+Serve para conferir a geometria em viewport estreita — em 375×812 (ou 375×480, emulando o
+teclado virtual aberto) o código-alvo e o caret precisam ficar visíveis ao mesmo tempo. Os
+fixtures ficam em `src/components/dev/race.fixtures.ts`, com o mesmo gate de `NODE_ENV`.
 
 ### 🧠 Como o WPM é calculado
 
@@ -322,7 +354,7 @@ signup, no friction: just create and play.
 
 | | Feature | Detail |
 |:--:|:--|:--|
-| 🏁 | **Real-time rooms** | **6-letter** invite code — or just share the link. Up to **12 players**. |
+| 🏁 | **Real-time rooms** | **6-letter** invite code — or just share the link. Up to **30 players**. |
 | 💻 | **8 languages** | JavaScript, TypeScript, Python, Java, C#, C++, Go and Rust — in **easy / medium / hard**. |
 | 📊 | **Live metrics** | **WPM**, **accuracy**, **errors** and per-player progress, updated on every keystroke. |
 | 🏆 | **Podium** | Gold/silver/bronze at the end + full standings with time. The leader restarts the match. |

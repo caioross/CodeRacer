@@ -4,16 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
-import { indentEdit } from "@/lib/indent";
+import { enterEdit, indentEdit } from "@/lib/indent";
 import { isMuted, playKey, setMuted } from "@/lib/sound";
+import { useEditorFont } from "@/lib/useEditorFont";
 import { cn } from "@/lib/utils";
 
 // VSCode-like typing surface with live syntax highlighting: a transparent
 // textarea sits over a colored <pre> mirror (perfectly aligned metrics).
 // Plus line-number gutter, active-line highlight, status bar, keyboard sound
 // (toggleable), and an options menu (font size + word wrap). Anti-cheat kept.
-const MIN_FONT = 12;
-const MAX_FONT = 20;
+//
+// O tamanho e o piso da fonte vêm de `useEditorFont` (issue #53): no toque o
+// editor nasce em 16px e não desce dali, senão o iOS dá zoom ao focar.
 
 export function CodeEditor({
   value,
@@ -23,7 +25,8 @@ export function CodeEditor({
   language,
   target,
   onAbandon,
-  errorPulse = 0
+  errorPulse = 0,
+  finishedPlaceholder = "✅ terminou! veja a posição dos outros..."
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -36,6 +39,9 @@ export function CodeEditor({
   /** Bumps on every keystroke that produced a wrong char (issue #10). Each
    *  increment fires the error feedback: shake (motion) + red flash + margin icon. */
   errorPulse?: number;
+  /** Copy do placeholder pós-término — o default é o multiplayer; o modo
+   *  Practice (issue #25, sem sala) passa uma versão solo coerente. */
+  finishedPlaceholder?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
@@ -44,7 +50,7 @@ export function CodeEditor({
   const pendingCaret = useRef<number | null>(null);
   const errorTimer = useRef<number | null>(null);
   const [errorActive, setErrorActive] = useState(false);
-  const [fontSize, setFontSize] = useState(15);
+  const { fontSize, minFont, increase: growFont, decrease: shrinkFont } = useEditorFont();
   const [wrap, setWrap] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -128,17 +134,33 @@ export function CodeEditor({
     if (gutterRef.current) gutterRef.current.scrollTop = st;
   }
 
-  // Tab preenche a indentação que o `target` espera na linha atual (em vez de
-  // mover o foco). A lógica pura vive em `@/lib/indent` (`indentEdit`), imune a
-  // erros anteriores do jogador e sem o antigo fallback tóxico de 2 espaços.
+  // Tab (desktop) e Enter (essencial no touch, que não tem Tab — issue #62)
+  // preenchem a indentação que o `target` espera, em vez de mover o foco / só
+  // quebrar a linha. A lógica pura vive em `@/lib/indent` (`indentEdit`/`enterEdit`),
+  // imune a erros anteriores do jogador e sem o antigo fallback tóxico de 2 espaços.
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    if (e.shiftKey || disabled) return;
     const ta = taRef.current;
     if (!ta) return;
     const start = ta.selectionStart ?? value.length;
     const end = ta.selectionEnd ?? start;
+
+    // Enter: quebra a linha JÁ com a indentação da linha seguinte. IMEs de
+    // teclado virtual que emitem keyCode 229/"Unidentified" simplesmente não
+    // casam aqui → Enter nativo (degradação silenciosa, nunca texto errado).
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+      if (disabled) return;
+      const { text, caret } = enterEdit(value, target, start, end);
+      if (text === value) return; // sem indentação a preencher → deixa o Enter nativo
+      e.preventDefault();
+      pendingCaret.current = caret;
+      playKey();
+      onChange(text);
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    if (e.shiftKey || disabled) return;
     const { text, caret } = indentEdit(value, target, start, end);
     if (text === value) return; // nada a inserir — sem re-render nem mexer no caret
     pendingCaret.current = caret;
@@ -208,15 +230,16 @@ export function CodeEditor({
                     <span className="text-text-muted">tamanho da fonte</span>
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setFontSize(s => Math.max(MIN_FONT, s - 1))}
-                        className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim"
+                        onClick={shrinkFont}
+                        disabled={fontSize <= minFont}
+                        className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim disabled:opacity-40 disabled:hover:border-bg-line"
                         aria-label="Diminuir fonte"
                       >
                         <Minus className="size-3" />
                       </button>
                       <span className="w-5 text-center tabular-nums text-text">{fontSize}</span>
                       <button
-                        onClick={() => setFontSize(s => Math.min(MAX_FONT, s + 1))}
+                        onClick={growFont}
                         className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim"
                         aria-label="Aumentar fonte"
                       >
@@ -242,8 +265,11 @@ export function CodeEditor({
         </div>
       </div>
 
-      {/* editor body: gutter + highlighted overlay + transparent textarea */}
-      <div className="relative flex min-h-[44vh] flex-1 overflow-hidden">
+      {/* editor body: gutter + highlighted overlay + transparent textarea.
+          Altura mínima em px no mobile (#54): o teclado virtual do iOS não
+          encolhe a viewport de layout, então `44vh` reservaria ~357px e jogaria
+          o caret para fora da tela junto com o código-alvo. */}
+      <div className="relative flex min-h-[152px] flex-1 overflow-hidden md:min-h-[44vh]">
         {showGutter && (
           <div
             ref={gutterRef}
@@ -307,6 +333,11 @@ export function CodeEditor({
               syncCaret();
             }}
             onPaste={onPaste}
+            // `drop` NÃO passa por `onPaste` — é outro evento, e soltar o snippet-alvo aqui
+            // preenchia a corrida inteira com 0 erros (issue #61). O par dragover+drop é
+            // necessário: sem cancelar o `dragover` o `drop` não chega cancelável em todo motor.
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => e.preventDefault()}
             onScroll={onScroll}
             onKeyDown={onKeyDown}
             onKeyUp={syncCaret}
@@ -319,7 +350,7 @@ export function CodeEditor({
             wrap={wrap ? "soft" : "off"}
             className="absolute inset-0 resize-none bg-transparent px-4 py-4 text-transparent caret-neon-green outline-none placeholder:text-text-dim disabled:opacity-50"
             style={{ ...sharedStyle, caretColor: "#00ff88", color: "transparent" }}
-            placeholder={disabled ? "✅ terminou! veja a posição dos outros..." : "$ comece a digitar..."}
+            placeholder={disabled ? finishedPlaceholder : "$ comece a digitar..."}
           />
         </div>
       </div>
