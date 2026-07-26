@@ -211,15 +211,17 @@ export function TypingCore({
         />
       </div>
 
-      {/* personal stats */}
-      <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
+      {/* personal stats — no mobile viram uma pílula horizontal com scroll-x
+          (#54, fatia 3), em vez de um bloco alto competindo por altura com o
+          alvo e o editor quando o teclado virtual está aberto. */}
+      <div className="card p-3 md:p-4">
+        <div className="flex items-center gap-2 mb-2 md:mb-3">
           <span className="label">// suas estatísticas</span>
           <span className="text-[10px] text-text-dim ml-auto">
             tempo {(elapsedMs / 1000).toFixed(1)}s
           </span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="flex gap-2 overflow-x-auto [&>*]:shrink-0 md:grid md:grid-cols-4 md:gap-3 md:overflow-visible">
           <Stat
             icon={<Zap className="size-4" />}
             label="WPM"

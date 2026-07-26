@@ -32,9 +32,13 @@ export function MatrixRain({ opacity = 0.07 }: { opacity?: number }) {
     window.addEventListener("resize", resize);
 
     // Honor reduced-motion: paint one calm static frame and bail out of the loop.
+    // O mesmo caminho vale para viewport de toque (#54, fatia 5): um rAF de tela
+    // cheia atrás da corrida gasta bateria e disputa CPU com a `textarea` — no
+    // celular o fundo fica estático, sem perder a identidade visual.
+    const mq = (q: string) =>
+      typeof window.matchMedia === "function" && window.matchMedia(q).matches;
     const prefersReduced =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      mq("(prefers-reduced-motion: reduce)") || mq("(pointer: coarse), (max-width: 767px)");
     if (prefersReduced) {
       ctx.fillStyle = `rgba(0, 255, 136, ${opacity * 2})`;
       ctx.font = `${fontSize}px ui-monospace, monospace`;

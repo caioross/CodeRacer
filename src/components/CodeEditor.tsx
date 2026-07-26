@@ -246,8 +246,11 @@ export function CodeEditor({
         </div>
       </div>
 
-      {/* editor body: gutter + highlighted overlay + transparent textarea */}
-      <div className="relative flex min-h-[44vh] flex-1 overflow-hidden">
+      {/* editor body: gutter + highlighted overlay + transparent textarea.
+          Altura mínima em px no mobile (#54): o teclado virtual do iOS não
+          encolhe a viewport de layout, então `44vh` reservaria ~357px e jogaria
+          o caret para fora da tela junto com o código-alvo. */}
+      <div className="relative flex min-h-[152px] flex-1 overflow-hidden md:min-h-[44vh]">
         {showGutter && (
           <div
             ref={gutterRef}

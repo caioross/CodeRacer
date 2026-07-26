@@ -54,9 +54,13 @@ export function CodeDisplay({
         </span>
       </div>
 
+      {/* Mobile (#54): teto em px, não em vh — no iOS o teclado virtual não
+          encolhe a viewport de layout, então `vh` mentiria justamente na hora em
+          que o espaço aperta. ~5 linhas de contexto bastam porque o efeito acima
+          mantém o caractere corrente centralizado. */}
       <div
         ref={containerRef}
-        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto overflow-x-hidden max-h-[44vh] whitespace-pre-wrap [overflow-wrap:anywhere]"
+        className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto overflow-x-hidden max-h-[136px] md:max-h-[44vh] whitespace-pre-wrap [overflow-wrap:anywhere]"
       >
         {chars.map((ch, i) => {
           const isCurrent = i === cursor;
