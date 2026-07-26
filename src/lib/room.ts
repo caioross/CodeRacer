@@ -90,6 +90,76 @@ export interface LivePlayer {
 
 export const COUNTDOWN_MS = 4000;
 
+// ─── Liveness da corrida (quando `racing` acaba) ──────────────────────────────
+// A corrida só terminava quando TODOS os presentes tinham `finishedAt`, então um
+// único jogador parado (AFK, celular bloqueado) prendia a sala em `racing` para
+// sempre: ninguém via Results e nada era persistido. Aqui ficam os critérios
+// alternativos de encerramento — puros e testáveis, sem sala real.
+
+/** Sem `progress` novo por esse tempo, o jogador deixa de bloquear o fim. */
+export const RACE_IDLE_MS = 30_000;
+/** Intervalo do tick de decisão do líder — segundos, nunca ms (área sagrada). */
+export const RACE_DECISION_TICK_MS = 1_000;
+/** Piso do teto de duração, para snippets curtos. */
+export const RACE_TIMEOUT_BASE_MS = 60_000;
+/** Orçamento por caractere: 600ms/char ≈ 20 WPM, bem abaixo de qualquer humano. */
+export const RACE_TIMEOUT_PER_CHAR_MS = 600;
+/** Teto absoluto: nenhuma corrida legítima passa disso. */
+export const RACE_TIMEOUT_MAX_MS = 600_000;
+
+/** Duração máxima de uma corrida, dimensionada pelo tamanho do snippet. */
+export function raceTimeoutMs(snippetLength: number): number {
+  const len = Number.isFinite(Number(snippetLength)) ? Math.max(0, Number(snippetLength)) : 0;
+  return Math.min(RACE_TIMEOUT_BASE_MS + len * RACE_TIMEOUT_PER_CHAR_MS, RACE_TIMEOUT_MAX_MS);
+}
+
+/** O mínimo que a decisão de encerramento precisa saber sobre um jogador. */
+export interface FinishCandidate {
+  /** `null` enquanto não completou nem abandonou. */
+  finishedAt: number | null;
+  /** Epoch (ms) do último `progress` dele; o início da corrida se nunca digitou. */
+  lastActivityAt: number;
+}
+
+export interface FinishContext {
+  /** Epoch (ms) em que a digitação começa (`rooms.start_at`). */
+  startMs: number;
+  now: number;
+  snippetLength: number;
+}
+
+/**
+ * `true` quando o líder deve postar a action `finish`. Três critérios, todos
+ * conservadores (na dúvida, a corrida continua):
+ *
+ * 1. **Todos terminaram** — a regra original.
+ * 2. **Inatividade** — quem falta está parado há `RACE_IDLE_MS`, E pelo menos um
+ *    jogador terminou. A exigência do finalizador evita matar uma corrida em que
+ *    todo mundo ainda está lendo o snippet nos primeiros segundos.
+ * 3. **Teto de duração** — passou de `raceTimeoutMs(snippetLength)` desde o
+ *    start. Único critério que vale mesmo sem ninguém ter terminado, e a rede de
+ *    segurança final contra sala presa em `racing`.
+ *
+ * Não decide NADA sobre ranking: quem não terminou continua fora dos `results`
+ * (ver `toResults` em `useRoom.ts`), então encerrar por tempo não é um caminho
+ * novo para o leaderboard.
+ */
+export function shouldFinishRace(
+  players: readonly FinishCandidate[],
+  { startMs, now, snippetLength }: FinishContext
+): boolean {
+  if (!players.length) return false; // sala vazia: não há o que persistir
+  if (!startMs || now < startMs) return false; // ainda em countdown
+
+  const pending = players.filter(p => p.finishedAt == null);
+  if (pending.length === 0) return true; // (1)
+
+  if (now - startMs >= raceTimeoutMs(snippetLength)) return true; // (3)
+
+  const someoneFinished = pending.length < players.length;
+  return someoneFinished && pending.every(p => now - p.lastActivityAt >= RACE_IDLE_MS); // (2)
+}
+
 // ─── Allowlist de settings (fronteira de criação/ajuste de sala) ──────────────
 // `language`/`difficulty` chegam como string crua do cliente e são copiados para
 // `matches`/`scores` (leaderboard global público). Sem allowlist, um POST direto

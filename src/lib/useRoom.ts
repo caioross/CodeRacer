@@ -6,6 +6,8 @@ import { getBrowserSupabase } from "./supabase-browser";
 import {
   colorForId,
   newPlayerId,
+  shouldFinishRace,
+  RACE_DECISION_TICK_MS,
   type ChatMsg,
   type LivePlayer,
   type PresenceMeta,
@@ -47,6 +49,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const myReadyRef = useRef(false);
   const myMetaRef = useRef<PresenceMeta | null>(null);
   const finishPostedRef = useRef(false);
+  // Epoch do último `progress` de cada jogador — alimenta o critério de
+  // inatividade do encerramento. Ref (não state) para não re-renderizar durante
+  // a corrida: só o tick do líder lê isso.
+  const lastActivityRef = useRef<Record<string, number>>({});
+  const playersRef = useRef<LivePlayer[]>([]);
   const claimingRef = useRef(false);
   const lastSentRef = useRef(0);
   const lastStartRef = useRef<string | null>(null);
@@ -175,6 +182,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       channel.on("broadcast", { event: "progress" }, ({ payload }) => {
         const m = payload as ProgressMsg;
         if (!m?.id || m.id === id) return;
+        lastActivityRef.current[m.id] = Date.now();
         setProgress(prev => ({ ...prev, [m.id]: m }));
       });
 
@@ -251,6 +259,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         myAbandonRef.current = false;
         myReadyRef.current = false;
         finishPostedRef.current = false;
+        lastActivityRef.current = {};
         setProgress({});
         setReadyMap({});
       }
@@ -260,6 +269,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       myAbandonRef.current = false;
       myReadyRef.current = false;
       finishPostedRef.current = false;
+      lastActivityRef.current = {};
       setProgress({});
       setReadyMap({});
     }
@@ -327,14 +337,38 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     []
   );
 
-  // Leader finalizes the match when everyone present has finished.
-  useEffect(() => {
-    if (!room || room.status !== "racing" || !isLeader) return;
-    if (finishPostedRef.current || !startMs || Date.now() < startMs) return;
-    if (players.length === 0 || !players.every(p => p.finishedAt)) return;
+  // Roster mais recente para o tick do líder ler sem virar dependência dele.
+  playersRef.current = players;
+
+  // Leader finalizes the match: everyone finished, the stragglers went idle, or
+  // the race blew past its time budget (`shouldFinishRace` in ./room).
+  const snippetLength = room?.snippet?.code.length ?? 0;
+  const maybeFinish = useCallback(() => {
+    if (!isLeader || room?.status !== "racing" || finishPostedRef.current || !startMs) return;
+    const list = playersRef.current;
+    const decide = list.map(p => ({
+      finishedAt: p.finishedAt,
+      // Quem nunca mandou `progress` conta como ativo desde o start.
+      lastActivityAt: lastActivityRef.current[p.id] ?? startMs
+    }));
+    if (!shouldFinishRace(decide, { startMs, now: Date.now(), snippetLength })) return;
     finishPostedRef.current = true;
-    postAction("finish", { results: toResults(players) });
-  }, [players, room, isLeader, startMs, postAction, toResults]);
+    postAction("finish", { results: toResults(list) });
+  }, [isLeader, room?.status, snippetLength, startMs, postAction, toResults]);
+
+  // Caminho imediato: alguém terminou/saiu e isso fechou a corrida.
+  useEffect(() => {
+    maybeFinish();
+  }, [players, maybeFinish]);
+
+  // Caminho por tempo: inatividade e teto de duração não geram evento nenhum, então
+  // o líder precisa reavaliar sozinho. Tick de 1s, e só do líder — lê refs e não
+  // dispara re-render, para não competir com a `textarea` (HANDBOOK §2).
+  useEffect(() => {
+    if (!isLeader || room?.status !== "racing") return;
+    const t = setInterval(maybeFinish, RACE_DECISION_TICK_MS);
+    return () => clearInterval(t);
+  }, [isLeader, room?.status, maybeFinish]);
 
   // Promote a new leader if the current one left.
   useEffect(() => {
@@ -380,6 +414,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         abandoned: myAbandonRef.current
       };
       // Optimistically update my own row.
+      lastActivityRef.current[id] = Date.now();
       setProgress(prev => ({ ...prev, [id]: msg }));
       const t = Date.now();
       const done = msg.finishedAt != null;
