@@ -6,14 +6,16 @@ import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
 import { indentEdit } from "@/lib/indent";
 import { isMuted, playKey, setMuted } from "@/lib/sound";
+import { useEditorFont } from "@/lib/useEditorFont";
 import { cn } from "@/lib/utils";
 
 // VSCode-like typing surface with live syntax highlighting: a transparent
 // textarea sits over a colored <pre> mirror (perfectly aligned metrics).
 // Plus line-number gutter, active-line highlight, status bar, keyboard sound
 // (toggleable), and an options menu (font size + word wrap). Anti-cheat kept.
-const MIN_FONT = 12;
-const MAX_FONT = 20;
+//
+// O tamanho e o piso da fonte vêm de `useEditorFont` (issue #53): no toque o
+// editor nasce em 16px e não desce dali, senão o iOS dá zoom ao focar.
 
 export function CodeEditor({
   value,
@@ -48,7 +50,7 @@ export function CodeEditor({
   const pendingCaret = useRef<number | null>(null);
   const errorTimer = useRef<number | null>(null);
   const [errorActive, setErrorActive] = useState(false);
-  const [fontSize, setFontSize] = useState(15);
+  const { fontSize, minFont, increase: growFont, decrease: shrinkFont } = useEditorFont();
   const [wrap, setWrap] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -212,15 +214,16 @@ export function CodeEditor({
                     <span className="text-text-muted">tamanho da fonte</span>
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setFontSize(s => Math.max(MIN_FONT, s - 1))}
-                        className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim"
+                        onClick={shrinkFont}
+                        disabled={fontSize <= minFont}
+                        className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim disabled:opacity-40 disabled:hover:border-bg-line"
                         aria-label="Diminuir fonte"
                       >
                         <Minus className="size-3" />
                       </button>
                       <span className="w-5 text-center tabular-nums text-text">{fontSize}</span>
                       <button
-                        onClick={() => setFontSize(s => Math.min(MAX_FONT, s + 1))}
+                        onClick={growFont}
                         className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim"
                         aria-label="Aumentar fonte"
                       >
