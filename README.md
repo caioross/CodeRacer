@@ -56,7 +56,7 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 | | Recurso | Detalhe |
 |:--:|:--|:--|
 | 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **30 jogadores**. |
-| 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — em **fácil / médio / difícil**. |
+| 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — nos níveis **🟢 Júnior / 🔵 Pleno / 🟣 Sênior**. |
 | 📊 | **Métricas ao vivo** | **WPM**, **precisão**, **erros** e progresso por jogador, atualizados a cada tecla. |
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
 | 🌍 | **Placar global** | Toda partida terminada é salva no **Supabase** — ranking de recorde de WPM por jogador em `/leaderboard`. |

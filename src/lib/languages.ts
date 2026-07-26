@@ -62,10 +62,13 @@ export const LANGUAGES: LangMeta[] = [
   { id: "cobol", label: "COBOL", color: "#005ca5", icon: "CBL" }
 ];
 
+// Nomes inspirados na carreira dev (#73): a progressão continua clara, mas com a
+// identidade do CodeRacer. Só a NOMENCLATURA muda — os `id` seguem easy/medium/hard,
+// que são a chave de tudo (allowlist da API, snippets, leaderboard, filtros).
 export const DIFFICULTIES: { id: Difficulty; label: string; desc: string }[] = [
-  { id: "easy", label: "Fácil", desc: "Snippets curtos, sintaxe básica" },
-  { id: "medium", label: "Médio", desc: "Snippets do dia a dia, ~10 linhas" },
-  { id: "hard", label: "Difícil", desc: "Snippets longos com sintaxe avançada" }
+  { id: "easy", label: "🟢 Júnior", desc: "Snippets curtos, sintaxe básica" },
+  { id: "medium", label: "🔵 Pleno", desc: "Snippets do dia a dia, ~10 linhas" },
+  { id: "hard", label: "🟣 Sênior", desc: "Snippets longos com sintaxe avançada" }
 ];
 
 export function langById(id: string): LangMeta | undefined {
