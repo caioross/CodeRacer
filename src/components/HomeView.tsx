@@ -369,7 +369,7 @@ export function HomeView() {
           <Feature
             icon={<Code2 className="size-4 text-neon-green" />}
             title="snippets reais"
-            text={`${LANGUAGES.length} linguagens, 200+ trechos de código de verdade em 3 níveis. Cada partida sorteia um diferente.`}
+            text={`${LANGUAGES.length} linguagens, 300+ trechos de código de verdade em 3 níveis. Cada partida sorteia um diferente.`}
           />
           <Feature
             icon={<Users className="size-4 text-neon-cyan" />}
