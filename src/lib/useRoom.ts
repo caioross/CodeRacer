@@ -180,12 +180,18 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
         for (const p of leftPresences as unknown as PresenceMeta[]) {
+          const { id: leftId, name: leftName } = p;
           // Expulso pelo líder já ganhou a própria notificação ("removido") —
-          // não duplique com um genérico "saiu". `kicked_ids` do servidor é a
-          // fonte da verdade e já chegou (foi o que fez a vítima sair).
-          const kicked = roomRef.current?.kicked_ids;
-          if (Array.isArray(kicked) && kicked.includes(p.id)) continue;
-          pushSystem(`${p.name} saiu`);
+          // não duplique com um genérico "saiu". A ordem de entrega entre o
+          // `postgres_changes` (que preenche `roomRef.kicked_ids`) e este evento
+          // de presence NÃO é garantida pelo Realtime; se o leave chegar primeiro,
+          // uma checagem síncrona veria a lista antiga e anunciaria os dois.
+          // Adiar o "saiu" e reconferir deixa a verdade da expulsão assentar.
+          setTimeout(() => {
+            const kicked = roomRef.current?.kicked_ids;
+            if (Array.isArray(kicked) && kicked.includes(leftId)) return;
+            pushSystem(`${leftName} saiu`);
+          }, 400);
         }
       });
 
