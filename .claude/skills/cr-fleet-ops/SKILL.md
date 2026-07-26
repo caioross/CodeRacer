@@ -135,7 +135,40 @@ Prompts das rotinas vivem em `C:\Users\Matrix\.claude\scheduled-tasks\coderacer-
   mais que 3 mudanças/semana; horário novo fora de janela livre da frota SkillDepot
   (confira com a ferramenta `list_scheduled_tasks` antes).
 
-## 11. Gotchas do ambiente
+## 11. Verificação — o que dá e o que NÃO dá para provar aqui
+
+O gate (§4) prova que o código compila e que a lógica está correta. Ele **não** prova que a
+tela ficou certa. Antes de gastar uma rodada tentando "ver funcionando", saiba o que o
+ambiente permite — a frota queimou ~7 PRs em W30 redescobrindo cada beco abaixo.
+
+**Não tente (custo alto, retorno zero):**
+
+- **Screenshot da preview da Vercel** — a preview é *protegida*; o bypass via MCP falha. Não é
+  caminho viável hoje. Confirmação de pixel é do dono, logado.
+- **Confiar no visual do Browser pane headless** — o `rAF` congela: `framer-motion` trava em
+  `opacity: 0` e `AnimatePresence` não remove o nó. O elemento invisível/presente na captura
+  **não** é bug. Verifique a *lógica instrumentada*, nunca o visual.
+- **Julgar rota dev-only pelo status HTTP** — `notFound()` responde **200** porque o
+  `app/loading.tsx` da raiz manda o shell antes. E pasta `_nome` **não roteia** (private folder
+  do App Router): rota só-de-dev usa route group `(dev)/`.
+- **Lobby, chat, presença, espectador, votação, corrida com 2+ jogadores** — exigem sessão
+  Realtime ao vivo e/ou 2 clientes. Inalcançáveis headless.
+
+**Faça (prova real, barata):**
+
+1. **Extraia a lógica para função pura e teste** (`room.ts`, `metrics.ts`, `share.ts`,
+   `indent.ts` — padrão #31/#32/#50/#58). É a prova mais forte que um agente consegue produzir.
+2. **Harness de dev** — `(dev)/harness/results` (#37) cobre as telas pós-corrida com fixtures.
+   Cheque se já existe harness antes de declarar "não dá para verificar".
+3. **Grep no `.next/`** (HTML pré-renderizado + bundle client) como prova de markup e de
+   *gating*. Cuidado: bloco gated por `hasBrowserSupabase()` não aparece no HTML
+   pré-renderizado — **ausência ali não é bug**.
+4. **Rastreio instrumentado temporário** para fluxos vivos (padrão #65/#72) — **remova antes
+   do commit** e diga no PR que removeu.
+5. **Declare no PR, em 1 linha, o que NÃO foi verificado e por quê.** Honestidade explícita
+   vale mais que uma afirmação otimista — o PR Doctor decide com isso.
+
+## 12. Gotchas do ambiente
 
 - Windows: prefira Git Bash para os comandos acima; caminhos `/e/Projetos/...`.
 - `pnpm install` num worktree novo é rápido (store compartilhado), mas necessário — `.next/`
