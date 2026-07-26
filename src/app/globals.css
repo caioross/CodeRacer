@@ -121,6 +121,39 @@
     font-weight: 600;
   }
 
+  /* Gôndola de estandartes (#97). O item centralizado ganha luz de tocha;
+     os demais recuam para a penumbra. `data-centered` é escrito pelo rAF do
+     BannerCarousel — nada aqui depende de re-render do React. */
+  .banner-gondola {
+    background-image: radial-gradient(
+      ellipse 60% 70% at 50% 0%,
+      rgba(251, 191, 36, 0.09),
+      transparent 70%
+    );
+  }
+  .banner-item .banner-cloth {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+    transition: box-shadow 180ms ease-out, filter 180ms ease-out;
+    filter: brightness(0.72) saturate(0.85);
+  }
+  /* Centralizado = iluminado pela tocha. Escolhido = anel verde. Os dois são
+     estados distintos: na votação do lobby dá para navegar sem votar. */
+  .banner-item[data-centered="true"] .banner-cloth {
+    filter: brightness(1.06) saturate(1.05);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+  }
+  .banner-item[aria-checked="true"] .banner-cloth {
+    box-shadow:
+      0 0 0 1px rgba(0, 255, 136, 0.55),
+      0 0 22px rgba(0, 255, 136, 0.3),
+      0 12px 28px rgba(0, 0, 0, 0.6);
+  }
+  .banner-item:focus-visible .banner-cloth {
+    box-shadow:
+      0 0 0 2px rgba(0, 229, 255, 0.9),
+      0 12px 28px rgba(0, 0, 0, 0.6);
+  }
+
   .glow-text-green { text-shadow: 0 0 8px rgba(0,255,136,0.6); }
   .glow-text-cyan { text-shadow: 0 0 8px rgba(0,229,255,0.6); }
   .glow-text-violet { text-shadow: 0 0 8px rgba(168,85,247,0.6); }

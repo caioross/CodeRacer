@@ -8,6 +8,7 @@ import { LANGUAGES, DIFFICULTIES, type Difficulty, type LangId } from "@/lib/lan
 import { Chat } from "./Chat";
 import { PlayerList } from "./PlayerList";
 import { useToast } from "./ui/Toast";
+import { BannerCarousel } from "./ui/BannerCarousel";
 
 export function Lobby({
   room,
@@ -150,7 +151,9 @@ export function Lobby({
           <div className="space-y-5">
             <div>
               <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                <label className="label">linguagem — votação</label>
+                <label className="label" id="lobby-lang-label">
+                  linguagem — votação
+                </label>
                 <span className="text-[10px] font-mono text-text-dim normal-case">
                   {voteSummary}
                 </span>
@@ -158,44 +161,18 @@ export function Lobby({
               <p className="text-[10px] text-text-dim mt-1 normal-case">
                 todos votam · você pode trocar até o início · a mais votada vence
               </p>
-              <div className="mt-2 grid grid-cols-4 sm:grid-cols-8 gap-1.5">
-                {LANGUAGES.map(l => {
-                  const count = voteTally[l.id] ?? 0;
-                  const mine = myVote === l.id;
-                  const leading = maxVotes > 0 && count === maxVotes;
-                  return (
-                    <button
-                      key={l.id}
-                      onClick={() => onVote(l.id as LangId)}
-                      aria-pressed={mine}
-                      className={
-                        "relative rounded-md border px-2 py-2 text-xs font-mono transition-all " +
-                        (mine
-                          ? "border-neon-green text-neon-green bg-neon-green/10 shadow-glow"
-                          : leading
-                          ? "border-neon-amber/60 text-neon-amber bg-neon-amber/5"
-                          : "border-bg-line text-text-muted hover:text-text hover:border-text-dim")
-                      }
-                      title={`Votar em ${l.label}${count ? ` (${count})` : ""}`}
-                    >
-                      {count > 0 && (
-                        <span
-                          className={
-                            "absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full text-[9px] font-bold tabular-nums " +
-                            (leading
-                              ? "bg-neon-amber text-bg"
-                              : "bg-bg-line text-text")
-                          }
-                          aria-label={`${count} voto${count > 1 ? "s" : ""}`}
-                        >
-                          {count}
-                        </span>
-                      )}
-                      <div className="font-bold">{l.icon}</div>
-                      <div className="text-[10px] mt-0.5">{l.label}</div>
-                    </button>
-                  );
-                })}
+              <div className="mt-2">
+                {/* `commitOnSettle={false}`: girar a gôndola só navega — o voto
+                    sai no clique/Enter. Sem isso, arrastar votaria em cada
+                    linguagem que passasse pelo centro. */}
+                <BannerCarousel
+                  value={myVote}
+                  onChange={onVote}
+                  commitOnSettle={false}
+                  badges={voteTally}
+                  leadingIds={leaders.map(l => l.id)}
+                  labelledBy="lobby-lang-label"
+                />
               </div>
             </div>
 

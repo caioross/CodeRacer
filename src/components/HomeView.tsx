@@ -12,6 +12,7 @@ import { MatrixRain } from "./MatrixRain";
 import { ClickSpark } from "./effects/ClickSpark";
 import { TypingDemo } from "./effects/TypingDemo";
 import { Modal } from "./ui/Modal";
+import { BannerCarousel } from "./ui/BannerCarousel";
 import { SpotlightCard } from "./ui/SpotlightCard";
 import { StarBorder } from "./ui/StarBorder";
 import { useToast } from "./ui/Toast";
@@ -437,24 +438,15 @@ export function HomeView() {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">linguagem</label>
-            <div className="mt-2 grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-              {LANGUAGES.map(l => (
-                <button
-                  key={l.id}
-                  onClick={() => setLanguage(l.id)}
-                  className={
-                    "rounded-md border px-2 py-2 text-xs font-mono transition-all " +
-                    (language === l.id
-                      ? "border-neon-green text-neon-green bg-neon-green/10 shadow-glow"
-                      : "border-bg-line text-text-muted hover:text-text hover:border-text-dim")
-                  }
-                  title={l.label}
-                >
-                  <div className="font-bold">{l.icon}</div>
-                  <div className="text-[10px] mt-0.5 truncate">{l.label}</div>
-                </button>
-              ))}
+            <label className="label" id="create-lang-label">
+              linguagem
+            </label>
+            <div className="mt-2">
+              <BannerCarousel
+                value={language}
+                onChange={setLanguage}
+                labelledBy="create-lang-label"
+              />
             </div>
           </div>
 
