@@ -23,6 +23,8 @@ export interface RoomRow {
   snippet: RoomSnippet | null;
   start_at: string | null; // ISO; moment typing begins
   results: ResultRow[] | null;
+  /** playerIds removidos pelo líder — verdade durável da expulsão (ver #39). */
+  kicked_ids: string[];
   created_at: string;
   updated_at: string;
 }
@@ -231,6 +233,41 @@ export function resolveDifficulty(
   return isValidDifficulty(raw) ? { ok: true, value: raw } : { ok: false };
 }
 
+// ─── Votação de linguagem na sala de espera (#72) ─────────────────────────────
+// A linguagem da próxima corrida é decidida coletivamente: cada jogador tem um
+// voto (mutável até o start). No start o líder resolve o vencedor e escreve em
+// `rooms.language` via a action `settings` — a fonte de verdade continua sendo a
+// linha da sala, então todos os clientes concordam. Puro e testável.
+
+/** Votos válidos por linguagem (ignora votos em linguagens inexistentes). */
+export function tallyVotes(votes: Record<string, unknown>): Record<string, number> {
+  const tally: Record<string, number> = {};
+  for (const lang of Object.values(votes)) {
+    if (!isValidLang(lang)) continue;
+    tally[lang] = (tally[lang] ?? 0) + 1;
+  }
+  return tally;
+}
+
+/**
+ * Linguagem vencedora da votação: a mais votada; em caso de empate, sorteio entre
+ * as empatadas (`rng`, injetável para teste). Sem votos válidos → `fallback` (a
+ * linguagem padrão da sala), então o fluxo nunca fica sem linguagem.
+ */
+export function pickVoteWinner(
+  votes: Record<string, unknown>,
+  fallback: LangId,
+  rng: () => number = Math.random
+): LangId {
+  const tally = tallyVotes(votes);
+  const entries = Object.entries(tally);
+  if (entries.length === 0) return fallback;
+  const max = Math.max(...entries.map(([, n]) => n));
+  const top = entries.filter(([, n]) => n === max).map(([lang]) => lang as LangId);
+  if (top.length === 1) return top[0];
+  return top[Math.min(top.length - 1, Math.floor(rng() * top.length))]; // sorteio
+}
+
 // ─── Sanitização de resultados (fronteira anti-cheat do leaderboard) ──────────
 // A engine de digitação é client-side, então a API roda com service_role e é o
 // único guardião das tabelas `matches`/`scores` (leaderboard global público).
@@ -241,8 +278,8 @@ export function resolveDifficulty(
 export const MAX_PLAUSIBLE_WPM = 350;
 /** Teto de comprimento de nick — espelha o cap do cliente em `useRoom` (`join`). */
 export const MAX_NAME_LEN = 20;
-/** Teto absoluto de jogadores por sala — espelha o cap de `settings` na API. */
-export const ABSOLUTE_MAX_PLAYERS = 12;
+/** Teto absoluto de jogadores por sala — fonte única do cap (API + sliders da UI). */
+export const ABSOLUTE_MAX_PLAYERS = 30;
 
 /** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
 export function clampInt(n: unknown, min: number, max: number): number {
@@ -257,7 +294,8 @@ export function clampInt(n: unknown, min: number, max: number): number {
  * humano real (não-objeto, `name` vazio após trim, ou `wpm` fora do inteiro
  * plausível 0..MAX_PLAUSIBLE_WPM) e CLAMPA os demais campos. Campos cosméticos
  * (`id`/`color`/`progress`/`finishedAt`) são preservados para a tela de fim de
- * corrida. O array é limitado a `room.max_players` (teto absoluto 12).
+ * corrida. O array é limitado a `room.max_players` (teto absoluto
+ * `ABSOLUTE_MAX_PLAYERS`).
  *
  * Puro e determinístico — coberto por `scripts/validate-persistence.mjs`.
  */
@@ -300,6 +338,141 @@ export function sanitizeResults(
   return out;
 }
 
+// ─── Montagem das linhas do leaderboard (matches/scores) ─────────────────────
+// A API só orquestra os `insert`; o mapeamento `results → linhas` vive aqui,
+// puro e determinístico, para ser coberto por teste (o `finished_at` entra como
+// parâmetro justamente para manter as funções determinísticas).
+
+/** Linha de `matches` (sem `id`, gerado pelo banco). */
+export interface MatchInsert {
+  room_code: string;
+  language: LangId;
+  difficulty: Difficulty;
+  snippet_title: string | null;
+  player_count: number;
+  winner_name: string | null;
+  winner_wpm: number | null;
+  finished_at: string;
+}
+
+/** Linha de `scores` — um score por jogador da partida. */
+export interface ScoreInsert {
+  match_id: string;
+  name: string;
+  language: LangId;
+  difficulty: Difficulty;
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  place: number | null;
+  finished: boolean;
+}
+
+/**
+ * Monta a linha de `matches` a partir dos `results` já sanitizados.
+ * Vencedor = menor `place` (ausente/0 cai no fallback 99, atrás de qualquer
+ * colocado). Retorna `null` quando não há resultado — assim nenhuma `matches`
+ * órfã é escrita e nenhum score é gerado.
+ */
+export function buildMatchRow(
+  room: RoomRow,
+  results: ResultRow[],
+  finishedAt: string
+): MatchInsert | null {
+  if (!results.length) return null;
+  const ranked = [...results].sort((a, b) => (a.place || 99) - (b.place || 99));
+  const winner = ranked[0];
+  return {
+    room_code: room.code,
+    language: room.language,
+    difficulty: room.difficulty,
+    snippet_title: room.snippet?.title || null,
+    player_count: results.length,
+    winner_name: winner?.name || null,
+    // `|| 0` cobre NaN/-0: um WPM não-numérico vira 0, nunca `NaN` no banco.
+    winner_wpm: winner ? Math.round(winner.wpm) || 0 : null,
+    finished_at: finishedAt
+  };
+}
+
+/** Monta as linhas de `scores` da partida (uma por resultado, na ordem recebida). */
+export function buildScoreRows(
+  matchId: string,
+  room: RoomRow,
+  results: ResultRow[]
+): ScoreInsert[] {
+  return results.map(r => ({
+    match_id: matchId,
+    name: r.name,
+    language: room.language,
+    difficulty: room.difficulty,
+    wpm: Math.round(r.wpm) || 0,
+    accuracy: Math.round(r.accuracy) || 0,
+    errors: Math.round(r.errors) || 0,
+    place: r.place || null,
+    finished: !!r.finished
+  }));
+}
+
+// ─── Autoridade de expulsão (fronteira pura, espelhada no validator) ──────────
+// Kick trafegava só por broadcast peer-to-peer, sem autoridade — qualquer
+// assinante do canal expulsava qualquer um (#39). A verdade agora vive no
+// servidor: a rota valida `canKick` e registra o alvo em `rooms.kicked_ids`; a
+// vítima descobre a remoção pela subscription postgres_changes, NUNCA por
+// broadcast. Mitiga o vetor anônimo; a fechadura forte (token por jogador) é #6.
+
+/**
+ * Teto de tamanho de um playerId aceito como alvo. Ids são UUID (36 chars);
+ * 64 dá folga sem deixar a coluna virar depósito de texto arbitrário.
+ * (Quórum do PR Doctor: sem teto, `kicked_ids` era um campo durável e
+ * gravável que inflava sem limite — e cada UPDATE refaz o fan-out da linha
+ * inteira para todo assinante `postgres_changes` da sala.)
+ */
+export const MAX_KICKED_ID_LEN = 64;
+/** Teto de expulsos por sala — acima do teto absoluto de jogadores (12). */
+export const MAX_KICKED = 24;
+
+/**
+ * Só o líder legítimo da sala (verdade = `room.leader_id`) pode remover um
+ * jogador, e o alvo precisa ser um id não-vazio, dentro do teto de tamanho e
+ * diferente do próprio líder. Puro e determinístico — coberto por
+ * `scripts/validate-persistence.mjs`.
+ */
+export function canKick(
+  room: Pick<RoomRow, "leader_id"> | null | undefined,
+  playerId: string,
+  targetId: string
+): boolean {
+  if (!room || typeof playerId !== "string" || room.leader_id !== playerId) return false;
+  if (typeof targetId !== "string") return false;
+  const t = targetId.trim();
+  // Alvo vazio, gigante (inflação da linha) ou o próprio líder → rejeitado.
+  return t.length > 0 && t.length <= MAX_KICKED_ID_LEN && t !== room.leader_id;
+}
+
+/**
+ * Acrescenta `targetId` à lista durável de expulsos de forma idempotente (sem
+ * duplicar). Alvo vazio, acima do teto de tamanho, já presente ou lista cheia
+ * → lista de origem inalterada (no-op seguro). Puro e determinístico.
+ */
+export function addKickedId(current: string[] | null | undefined, targetId: string): string[] {
+  const base = Array.isArray(current)
+    ? current.filter(x => typeof x === "string" && x.length <= MAX_KICKED_ID_LEN)
+    : [];
+  const t = typeof targetId === "string" ? targetId.trim() : "";
+  if (!t || t.length > MAX_KICKED_ID_LEN || base.includes(t)) return base;
+  // Lista cheia: no-op. O crescimento da linha da sala é limitado por
+  // construção — nenhuma sequência de requests infla `rooms` sem teto.
+  if (base.length >= MAX_KICKED) return base;
+  return [...base, t];
+}
+
+/** A lista de expulsos está cheia? (rota devolve erro honesto em vez de `ok` mudo.) */
+export function kickedListFull(current: string[] | null | undefined): boolean {
+  const base = Array.isArray(current) ? current.filter(x => typeof x === "string") : [];
+  return base.length >= MAX_KICKED;
+}
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",
@@ -321,4 +494,36 @@ export function colorForId(id: string): string {
 export function newPlayerId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/** Resposta que a rota deve emitir depois de tentar escrever na sala (#56). */
+export interface RoomUpdateOutcome {
+  ok: boolean;
+  status: number;
+  /** Copy voltada ao jogador (o detalhe técnico fica no log do servidor). */
+  error?: string;
+}
+
+/**
+ * Decide, a partir do resultado de um `UPDATE` em `rooms`, se a escrita pode ser
+ * anunciada como sucesso. As mutações de sala respondiam `ok: true` sem olhar o
+ * `error` do supabase-js — que devolve `{ error }` em vez de lançar —, então
+ * constraint violada, RLS ou timeout viravam "deu certo" na tela do líder (#56).
+ *
+ * Regras (puro e determinístico, coberto por `room.test.ts`):
+ * - `error` presente ⇒ 500 e copy neutra; o detalhe do PostgREST NUNCA volta ao
+ *   cliente (`useRoom.ts` exibe `error` em toast — seria schema na tela do jogador).
+ * - zero linhas confirmadas ⇒ 409 "não foi possível confirmar". Não afirmamos
+ *   "sala não encontrada": `getServerSupabase` cai para a chave anon quando não há
+ *   service_role, e aí 0 linhas pode ser SELECT negado por RLS, não sala apagada.
+ * - ≥1 linha ⇒ ok.
+ */
+export function roomUpdateOutcome(res: {
+  error?: unknown;
+  rows?: number | null;
+}): RoomUpdateOutcome {
+  if (res.error) return { ok: false, status: 500, error: "Não foi possível atualizar a sala" };
+  if (!res.rows || res.rows < 1)
+    return { ok: false, status: 409, error: "Não foi possível confirmar a alteração" };
+  return { ok: true, status: 200 };
 }

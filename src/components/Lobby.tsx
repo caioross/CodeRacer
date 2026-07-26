@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X } from "lucide-react";
+import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X, Zap } from "lucide-react";
 import type { RoomState } from "@/lib/types";
+import { ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 import { LANGUAGES, DIFFICULTIES, type Difficulty, type LangId } from "@/lib/languages";
 import { Chat } from "./Chat";
 import { PlayerList } from "./PlayerList";
@@ -12,20 +13,28 @@ export function Lobby({
   room,
   meId,
   isLeader,
+  voteTally,
+  myVote,
   onUpdateSettings,
   onStart,
   onChat,
   onSetReady,
-  onKick
+  onKick,
+  onVote
 }: {
   room: RoomState;
   meId: string;
   isLeader: boolean;
+  /** Votos por linguagem (só de quem está presente) — votação #72. */
+  voteTally: Record<string, number>;
+  /** Minha escolha atual, ou null. */
+  myVote: LangId | null;
   onUpdateSettings: (s: Partial<RoomState["settings"]>) => void;
   onStart: () => void;
   onChat: (text: string) => void;
   onSetReady: (ready: boolean) => void;
   onKick: (id: string) => void;
+  onVote: (language: LangId) => void;
 }) {
   const toast = useToast();
 
@@ -35,6 +44,17 @@ export function Lobby({
   const others = room.players.filter(p => p.id !== room.leaderId);
   const readyCount = others.filter(p => p.ready).length;
   const allReady = others.length === 0 || others.every(p => p.ready);
+
+  // Votação de linguagem (#72): a mais votada vence; empate → sorteio no start.
+  const totalVotes = Object.values(voteTally).reduce((a, b) => a + b, 0);
+  const maxVotes = Math.max(0, ...Object.values(voteTally));
+  const leaders = LANGUAGES.filter(l => maxVotes > 0 && (voteTally[l.id] ?? 0) === maxVotes);
+  const voteSummary =
+    totalVotes === 0
+      ? "ninguém votou ainda — a linguagem padrão da sala será usada"
+      : leaders.length === 1
+      ? `vencendo: ${leaders[0].label} · ${maxVotes} voto${maxVotes > 1 ? "s" : ""}`
+      : `empate: ${leaders.map(l => l.label).join(", ")} — sorteio no início`;
 
   function copyLink() {
     const link = `${window.location.origin}/room/${room.code}`;
@@ -78,17 +98,27 @@ export function Lobby({
             </div>
             <div className="flex items-center gap-2">
               {!isLeader && (
+                // Destaque do CTA (issue #71): quando NÃO está pronto, é o botão
+                // primário verde, maior e pulsando — é a ação que o jogador precisa
+                // achar. Uma vez pronto, vira um estado calmo e claramente concluído
+                // (verde + check), sem competir por atenção. Antes era o inverso.
                 <button
                   onClick={() => onSetReady(!myReady)}
-                  className={myReady ? "btn-primary" : "btn-secondary"}
+                  className={
+                    myReady
+                      ? "btn-secondary border-neon-green/50 text-neon-green"
+                      : "btn-primary animate-ready-pulse px-5 py-2.5 text-sm font-bold"
+                  }
                   aria-pressed={myReady}
                 >
                   {myReady ? (
                     <>
-                      <Check className="size-4" /> pronto
+                      <Check className="size-4" /> pronto!
                     </>
                   ) : (
-                    "marcar como pronto"
+                    <>
+                      <Zap className="size-4" /> Ficar pronto
+                    </>
                   )}
                 </button>
               )}
@@ -112,30 +142,55 @@ export function Lobby({
             <span className="label">configurações</span>
             {!isLeader && (
               <span className="text-[10px] text-text-dim ml-2">
-                (somente o líder edita)
+                (dificuldade e limite: só o líder · linguagem: todos votam)
               </span>
             )}
           </div>
 
           <div className="space-y-5">
             <div>
-              <label className="label">linguagem</label>
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <label className="label">linguagem — votação</label>
+                <span className="text-[10px] font-mono text-text-dim normal-case">
+                  {voteSummary}
+                </span>
+              </div>
+              <p className="text-[10px] text-text-dim mt-1 normal-case">
+                todos votam · você pode trocar até o início · a mais votada vence
+              </p>
               <div className="mt-2 grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                 {LANGUAGES.map(l => {
-                  const active = room.settings.language === l.id;
+                  const count = voteTally[l.id] ?? 0;
+                  const mine = myVote === l.id;
+                  const leading = maxVotes > 0 && count === maxVotes;
                   return (
                     <button
                       key={l.id}
-                      disabled={!isLeader}
-                      onClick={() => onUpdateSettings({ language: l.id as LangId })}
+                      onClick={() => onVote(l.id as LangId)}
+                      aria-pressed={mine}
                       className={
-                        "rounded-md border px-2 py-2 text-xs font-mono transition-all " +
-                        (active
+                        "relative rounded-md border px-2 py-2 text-xs font-mono transition-all " +
+                        (mine
                           ? "border-neon-green text-neon-green bg-neon-green/10 shadow-glow"
-                          : "border-bg-line text-text-muted hover:text-text hover:border-text-dim disabled:hover:border-bg-line disabled:hover:text-text-muted")
+                          : leading
+                          ? "border-neon-amber/60 text-neon-amber bg-neon-amber/5"
+                          : "border-bg-line text-text-muted hover:text-text hover:border-text-dim")
                       }
-                      title={l.label}
+                      title={`Votar em ${l.label}${count ? ` (${count})` : ""}`}
                     >
+                      {count > 0 && (
+                        <span
+                          className={
+                            "absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full text-[9px] font-bold tabular-nums " +
+                            (leading
+                              ? "bg-neon-amber text-bg"
+                              : "bg-bg-line text-text")
+                          }
+                          aria-label={`${count} voto${count > 1 ? "s" : ""}`}
+                        >
+                          {count}
+                        </span>
+                      )}
                       <div className="font-bold">{l.icon}</div>
                       <div className="text-[10px] mt-0.5">{l.label}</div>
                     </button>
@@ -180,7 +235,7 @@ export function Lobby({
               <input
                 type="range"
                 min={2}
-                max={12}
+                max={ABSOLUTE_MAX_PLAYERS}
                 disabled={!isLeader}
                 value={room.settings.maxPlayers}
                 onChange={e =>

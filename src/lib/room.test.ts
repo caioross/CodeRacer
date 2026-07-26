@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   sanitizeResults,
+  buildMatchRow,
+  buildScoreRows,
   clampInt,
   raceTimeoutMs,
+  roomUpdateOutcome,
   shouldFinishRace,
   isSpectatorJoin,
   MAX_PLAUSIBLE_WPM,
@@ -10,7 +13,11 @@ import {
   ABSOLUTE_MAX_PLAYERS,
   RACE_IDLE_MS,
   RACE_TIMEOUT_BASE_MS,
-  RACE_TIMEOUT_MAX_MS
+  RACE_TIMEOUT_MAX_MS,
+  tallyVotes,
+  pickVoteWinner,
+  type ResultRow,
+  type RoomRow
 } from "./room";
 
 // Fronteira anti-cheat do leaderboard: a engine é client-side, então a API roda
@@ -130,7 +137,10 @@ describe("sanitizeResults — clamp de accuracy/errors/place", () => {
 });
 
 describe("sanitizeResults — cap de tamanho do array", () => {
-  const flood = Array.from({ length: 30 }, (_, i) =>
+  // O flood precisa ser MAIOR que ABSOLUTE_MAX_PLAYERS, senão os asserts de teto
+  // passam por tautologia (entram 30, saem 30) e o `break` do cap nunca dispara —
+  // a rede que impede um `finish` forjado de inflar `scores` deixaria de ser testada.
+  const flood = Array.from({ length: ABSOLUTE_MAX_PLAYERS + 10 }, (_, i) =>
     legit({ id: `p${i}`, name: `n${i}`, place: i + 1 })
   );
 
@@ -162,6 +172,168 @@ describe("sanitizeResults — entradas degeneradas", () => {
       ROOM
     );
     expect(out).toHaveLength(2);
+  });
+});
+
+// ─── Builders do leaderboard (matches/scores) ────────────────────────────────
+// Antes da #50 esse mapeamento vivia inline dentro de `persistMatch` (async e
+// privada, só alcançável atrás de uma corrida completa) — impossível de proteger.
+// Aqui ele é puro: o contrato do que entra em `matches`/`scores` fica versionado.
+
+const FINISHED_AT = "2026-07-22T14:00:00.000Z";
+
+const FULL_ROOM: RoomRow = {
+  code: "ABC123",
+  status: "finished",
+  language: "typescript",
+  difficulty: "medium",
+  max_players: 8,
+  is_public: true,
+  leader_id: "p1",
+  snippet: { title: "Debounce", code: "…", language: "typescript", difficulty: "medium" },
+  start_at: "2026-07-22T13:59:00.000Z",
+  results: null,
+  kicked_ids: [],
+  created_at: FINISHED_AT,
+  updated_at: FINISHED_AT
+};
+
+/** Resultado já sanitizado (o que os builders realmente recebem em produção). */
+const result = (over: Partial<ResultRow> = {}): ResultRow => ({
+  id: "p1",
+  name: "caio",
+  color: "#00ff88",
+  wpm: 85,
+  accuracy: 97,
+  errors: 3,
+  progress: 1,
+  place: 1,
+  finished: true,
+  finishedAt: 1720000000000,
+  ...over
+});
+
+describe("buildMatchRow", () => {
+  it("results vazio → null (nenhuma `matches` órfã)", () => {
+    expect(buildMatchRow(FULL_ROOM, [], FINISHED_AT)).toBeNull();
+  });
+
+  it("copia o contexto da sala e conta os jogadores", () => {
+    const row = buildMatchRow(FULL_ROOM, [result(), result({ id: "p2", name: "alice", place: 2 })], FINISHED_AT)!;
+    expect(row.room_code).toBe("ABC123");
+    expect(row.language).toBe("typescript");
+    expect(row.difficulty).toBe("medium");
+    expect(row.snippet_title).toBe("Debounce");
+    expect(row.player_count).toBe(2);
+    expect(row.finished_at).toBe(FINISHED_AT);
+  });
+
+  it("sala sem snippet → snippet_title null", () => {
+    const row = buildMatchRow({ ...FULL_ROOM, snippet: null }, [result()], FINISHED_AT)!;
+    expect(row.snippet_title).toBeNull();
+  });
+
+  it("vencedor = menor place, independente da ordem do array", () => {
+    const row = buildMatchRow(
+      FULL_ROOM,
+      [result({ id: "p3", name: "zoe", place: 3, wpm: 40 }), result({ name: "caio", place: 1, wpm: 85 })],
+      FINISHED_AT
+    )!;
+    expect(row.winner_name).toBe("caio");
+    expect(row.winner_wpm).toBe(85);
+  });
+
+  it("place ausente cai no fallback e fica atrás de qualquer colocado", () => {
+    const row = buildMatchRow(
+      FULL_ROOM,
+      [result({ name: "desistente", place: null, wpm: 200 }), result({ name: "alice", place: 4, wpm: 50 })],
+      FINISHED_AT
+    )!;
+    expect(row.winner_name).toBe("alice");
+  });
+
+  it("empate de place mantém o primeiro do array (sort estável)", () => {
+    const row = buildMatchRow(
+      FULL_ROOM,
+      [result({ name: "primeiro", place: 1 }), result({ name: "segundo", place: 1 })],
+      FINISHED_AT
+    )!;
+    expect(row.winner_name).toBe("primeiro");
+  });
+
+  it("ninguém colocado (todos place null) ainda elege um vencedor e persiste a partida", () => {
+    const row = buildMatchRow(FULL_ROOM, [result({ name: "bob", place: null })], FINISHED_AT)!;
+    expect(row.winner_name).toBe("bob");
+    expect(row.player_count).toBe(1);
+  });
+
+  it("winner_wpm arredonda e nunca vira NaN", () => {
+    expect(buildMatchRow(FULL_ROOM, [result({ wpm: 85.6 })], FINISHED_AT)!.winner_wpm).toBe(86);
+    expect(buildMatchRow(FULL_ROOM, [result({ wpm: 0 })], FINISHED_AT)!.winner_wpm).toBe(0);
+    const nan = buildMatchRow(FULL_ROOM, [result({ wpm: NaN })], FINISHED_AT)!.winner_wpm;
+    expect(nan).toBe(0);
+    expect(Number.isNaN(nan)).toBe(false);
+  });
+
+  it("nome vazio no vencedor → winner_name null", () => {
+    expect(buildMatchRow(FULL_ROOM, [result({ name: "" })], FINISHED_AT)!.winner_name).toBeNull();
+  });
+});
+
+describe("buildScoreRows", () => {
+  it("results vazio → nenhuma linha de score", () => {
+    expect(buildScoreRows("m1", FULL_ROOM, [])).toEqual([]);
+  });
+
+  it("uma linha por resultado, na ordem recebida, com o match_id e o contexto da sala", () => {
+    const rows = buildScoreRows("m1", FULL_ROOM, [
+      result({ name: "caio", place: 1 }),
+      result({ id: "p2", name: "alice", place: 2 })
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.map(r => r.name)).toEqual(["caio", "alice"]);
+    expect(rows.every(r => r.match_id === "m1")).toBe(true);
+    expect(rows[0].language).toBe("typescript");
+    expect(rows[0].difficulty).toBe("medium");
+  });
+
+  it("wpm/accuracy/errors arredondados e nunca NaN", () => {
+    const [row] = buildScoreRows("m1", FULL_ROOM, [
+      result({ wpm: 85.4, accuracy: 96.7, errors: 2.5 })
+    ]);
+    expect(row.wpm).toBe(85);
+    expect(row.accuracy).toBe(97);
+    expect(row.errors).toBe(3);
+
+    const [nan] = buildScoreRows("m1", FULL_ROOM, [
+      result({ wpm: NaN, accuracy: NaN, errors: NaN })
+    ]);
+    expect([nan.wpm, nan.accuracy, nan.errors]).toEqual([0, 0, 0]);
+  });
+
+  it("place 0/ausente → null; place válido preservado", () => {
+    const rows = buildScoreRows("m1", FULL_ROOM, [
+      result({ place: 0 }),
+      result({ place: null }),
+      result({ place: 2 })
+    ]);
+    expect(rows.map(r => r.place)).toEqual([null, null, 2]);
+  });
+
+  it("place negativo NÃO é normalizado aqui — quem barra isso é sanitizeResults", () => {
+    // Contrato real do `r.place || null`: só falsy vira null. Um place negativo
+    // nunca chega aos builders porque `sanitizeResults` já o transformou em null
+    // (ver suite acima); o teste versiona essa divisão de responsabilidade.
+    expect(buildScoreRows("m1", FULL_ROOM, [result({ place: -1 })])[0].place).toBe(-1);
+    expect(sanitizeResults([legit({ place: -1 })], ROOM)[0].place).toBeNull();
+  });
+
+  it("finished é coagido para booleano", () => {
+    const rows = buildScoreRows("m1", FULL_ROOM, [
+      result({ finished: 1 as unknown as boolean }),
+      result({ finished: undefined as unknown as boolean })
+    ]);
+    expect(rows.map(r => r.finished)).toEqual([true, false]);
   });
 });
 
@@ -295,5 +467,92 @@ describe("isSpectatorJoin", () => {
   it("sem corrida (startMs null/0) nunca é espectador", () => {
     expect(isSpectatorJoin(START, null, "racing")).toBe(false);
     expect(isSpectatorJoin(START, 0, "racing")).toBe(false);
+  });
+});
+
+// Votação de linguagem (#72): decide a linguagem da próxima corrida. Puro e
+// determinístico (o sorteio de empate recebe um `rng` injetável no teste).
+describe("tallyVotes", () => {
+  it("conta votos por linguagem", () => {
+    expect(tallyVotes({ a: "python", b: "python", c: "rust" })).toEqual({ python: 2, rust: 1 });
+  });
+
+  it("ignora votos em linguagens inexistentes ou não-string", () => {
+    expect(tallyVotes({ a: "cobiscript", b: 42, c: null, d: "go" })).toEqual({ go: 1 });
+  });
+
+  it("mapa vazio → tally vazio", () => {
+    expect(tallyVotes({})).toEqual({});
+  });
+});
+
+describe("pickVoteWinner", () => {
+  it("sem votos → linguagem padrão (fallback)", () => {
+    expect(pickVoteWinner({}, "javascript")).toBe("javascript");
+    expect(pickVoteWinner({ a: "naoexiste" }, "javascript")).toBe("javascript");
+  });
+
+  it("vence a mais votada", () => {
+    expect(pickVoteWinner({ a: "python", b: "python", c: "rust" }, "go")).toBe("python");
+  });
+
+  it("empate → sorteia entre as empatadas (rng injetável)", () => {
+    const votes = { a: "python", b: "rust" }; // 1×1, top = [python, rust]
+    expect(pickVoteWinner(votes, "go", () => 0)).toBe("python"); // índice 0
+    expect(pickVoteWinner(votes, "go", () => 0.99)).toBe("rust"); // índice 1
+  });
+
+  it("empate nunca escapa do conjunto empatado nem estoura o índice", () => {
+    const votes = { a: "python", b: "rust", c: "go" }; // triplo empate
+    const winner = pickVoteWinner(votes, "javascript", () => 1); // rng no limite
+    expect(["python", "rust", "go"]).toContain(winner);
+  });
+
+  it("um voto isolado vence mesmo contra o fallback", () => {
+    expect(pickVoteWinner({ a: "elixir" }, "javascript")).toBe("elixir");
+  });
+});
+
+// #56 — as mutações de sala respondiam `ok: true` sem olhar o `error` do
+// supabase-js (que devolve `{ error }` em vez de lançar). O líder via "partida
+// iniciada" com a sala parada no lobby. Esta é a decisão que a rota consulta.
+describe("roomUpdateOutcome", () => {
+  it("escrita confirmada (≥1 linha) → ok, sem mensagem", () => {
+    const out = roomUpdateOutcome({ rows: 1 });
+    expect(out).toEqual({ ok: true, status: 200 });
+  });
+
+  it("erro do banco → 500 com copy neutra (não vaza detalhe de schema)", () => {
+    const out = roomUpdateOutcome({
+      error: { message: 'new row violates check constraint "rooms_difficulty_chk"' },
+      rows: 0
+    });
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe(500);
+    expect(out.error).toBe("Não foi possível atualizar a sala");
+    // O texto do PostgREST vira toast no cliente (useRoom.ts) — nunca pode passar.
+    expect(out.error).not.toMatch(/constraint|rooms_|violates/);
+  });
+
+  it("erro tem precedência sobre a contagem de linhas", () => {
+    // Com anon+RLS o `.select()` pode voltar vazio junto com o erro; 500 é a
+    // resposta certa — 409 afirmaria que a sala sumiu, o que não sabemos.
+    expect(roomUpdateOutcome({ error: { message: "timeout" }, rows: 3 }).status).toBe(500);
+  });
+
+  it("zero linhas confirmadas → 409 neutro, nunca 'Sala não encontrada'", () => {
+    // `getServerSupabase` cai para a chave anon sem service_role: 0 linhas pode
+    // ser SELECT negado por RLS, não sala apagada. Não afirmamos o que não sabemos.
+    for (const rows of [0, null, undefined]) {
+      const out = roomUpdateOutcome({ rows });
+      expect(out.ok).toBe(false);
+      expect(out.status).toBe(409);
+      expect(out.error).toBe("Não foi possível confirmar a alteração");
+    }
+  });
+
+  it("nunca emite ok sem evidência de escrita (AC da #56)", () => {
+    const semEvidencia = [{ rows: 0 }, { rows: null }, { error: { message: "x" }, rows: 1 }];
+    for (const res of semEvidencia) expect(roomUpdateOutcome(res).ok).toBe(false);
   });
 });

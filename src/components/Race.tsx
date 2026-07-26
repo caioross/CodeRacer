@@ -10,15 +10,19 @@ import { TypingCore } from "./TypingCore";
 export function Race({
   room,
   meId,
+  isLeader = false,
   onProgress,
   onAbandon,
-  onChat
+  onChat,
+  onKick
 }: {
   room: RoomState;
   meId: string;
+  isLeader?: boolean;
   onProgress: (progress: number, wpm: number, accuracy: number, errors: number) => void;
   onAbandon: () => void;
   onChat: (text: string) => void;
+  onKick?: (targetId: string) => void;
 }) {
   const snippet = room.snippet!;
   const startedAt = room.startedAt!;
@@ -28,7 +32,12 @@ export function Race({
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
       {/* track */}
-      <RaceTrack players={room.players} meId={meId} />
+      <RaceTrack
+        players={room.players}
+        meId={meId}
+        leaderId={room.leaderId}
+        onKick={isLeader ? onKick : undefined}
+      />
 
       {/* code + input + personal stats */}
       <TypingCore
@@ -39,6 +48,7 @@ export function Race({
         onProgress={onProgress}
         heartbeat
         onAbandon={onAbandon}
+        idleForfeit
       />
 
       <FloatingChat

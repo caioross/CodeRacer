@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { X } from "lucide-react";
 import type { Player } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -15,10 +16,15 @@ function classify(p: Player) {
 
 export function RaceTrack({
   players,
-  meId
+  meId,
+  leaderId,
+  onKick
 }: {
   players: Player[];
   meId: string;
+  leaderId?: string;
+  /** Presente só para o líder: expulsa um griefer sem sair da corrida (#66). */
+  onKick?: (targetId: string) => void;
 }) {
   // Finished first (by place), then who's still racing (by progress), then who gave up.
   const sorted = [...players].sort((a, b) => {
@@ -36,27 +42,39 @@ export function RaceTrack({
 
   return (
     <div
-      className="card p-4 overflow-hidden relative"
-      style={{ minHeight: 80 + sorted.length * TRACK_HEIGHT_PER_PLAYER }}
+      // Mobile (#54, fatia 2): faixa compacta e fixa no topo — só você e quem
+      // lidera. A altura mínima por jogador vale só no desktop (via CSS var),
+      // senão a pista reservaria espaço para linhas que o mobile nem mostra.
+      className="card p-3 md:p-4 overflow-hidden relative sticky top-0 z-20 md:static md:z-auto"
+      style={
+        {
+          "--track-min": `${80 + sorted.length * TRACK_HEIGHT_PER_PLAYER}px`
+        } as React.CSSProperties
+      }
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2 md:mb-3">
         <span className="label">// posição em tempo real</span>
         <span className="text-[10px] text-text-dim">
           {doneCount}/{sorted.length} terminaram
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 md:min-h-[calc(var(--track-min)-3.25rem)]">
         {sorted.map((p, idx) => {
           const isMe = p.id === meId;
           const { finished, abandoned } = classify(p);
           const barColor = abandoned ? "#7d8590" : p.color;
           const pct = Math.round(p.progress * 100);
+          // No mobile a pista mostra só você e o ponteiro da corrida (idx 0) —
+          // os demais continuam no DOM (e no desktop), apenas ocultos por CSS,
+          // então nada de estado novo nem re-render extra durante a digitação.
+          const compactOnMobile = !isMe && idx !== 0;
           return (
             <div
               key={p.id}
               className={cn(
                 "relative -mx-1 rounded-md px-1 py-0.5 transition-colors",
+                compactOnMobile && "hidden md:block",
                 finished && "bg-neon-green/[0.06]",
                 abandoned && "opacity-60"
               )}
@@ -96,6 +114,16 @@ export function RaceTrack({
                     <span className="ml-1 font-semibold text-neon-red/80">desistiu</span>
                   )}
                 </span>
+                {onKick && !isMe && p.id !== leaderId && (
+                  <button
+                    onClick={() => onKick(p.id)}
+                    title={`Remover ${p.name} da sala`}
+                    aria-label={`Remover ${p.name} da sala`}
+                    className="grid size-4 shrink-0 place-items-center rounded-full border border-neon-red/40 text-neon-red opacity-60 transition hover:bg-neon-red/15 hover:opacity-100"
+                  >
+                    <X className="size-2.5" />
+                  </button>
+                )}
               </div>
               <div
                 className={cn(

@@ -213,3 +213,15 @@
   50% { transform: translateY(-6px); }
 }
 .animate-cr-float { animation: cr-float 6s ease-in-out infinite; }
+
+/* Pulso de atenção do CTA "Ficar pronto" no lobby (issue #71): um anel verde que
+   expande e some, chamando o olhar de quem ainda não confirmou. box-shadow-only =
+   sem layout/reflow. É lobby (não a corrida), então não compete com a área sagrada.
+   Sob prefers-reduced-motion a regra global zera a duração → some o movimento e
+   resta o glow estático do btn-primary. */
+@keyframes cr-ready-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.5); }
+  70% { box-shadow: 0 0 0 12px rgba(0, 255, 136, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+}
+.animate-ready-pulse { animation: cr-ready-pulse 2s ease-out infinite; }
