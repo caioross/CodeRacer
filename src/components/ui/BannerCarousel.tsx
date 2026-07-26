@@ -18,6 +18,7 @@ import {
   type ClothParams,
   type ClothState
 } from "@/lib/banners";
+import type { ClothEngine, SlotView } from "@/lib/cloth/types";
 
 /** Faixas horizontais por estandarte — a malha do pano. */
 const SEGMENTS = 9;
@@ -109,8 +110,18 @@ export function BannerCarousel({
   }, [checkedIndex, centerOn]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const stripRefs = useRef<(HTMLSpanElement | null)[][]>([]);
+
+  // Motor de tecido pesado (three + ammo). Carregado por import() dinâmico
+  // depois da montagem — nunca entra no first-load. Enquanto não estiver
+  // pronto (ou se falhar / reduced-motion), vale o motor analítico das faixas.
+  const engineRef = useRef<ClothEngine | null>(null);
+  const slotsRef = useRef<SlotView[]>([]);
+  const [heavyReady, setHeavyReady] = useState(false);
+  /** Espelho do índice escolhido para o rAF/paint, que não re-renderizam. */
+  const checkedIndexRef = useRef(-1);
 
   // Estado da simulação vive em refs: muda a 60fps e não deve tocar o React.
   const offsetRef = useRef(0);
@@ -177,6 +188,9 @@ export function BannerCarousel({
     const { w, pitch, half } = geomRef.current;
     const total = pitch * count;
     const offset = offsetRef.current;
+    const heavy = engineRef.current;
+    const slots: SlotView[] = heavy ? [] : slotsRef.current;
+    if (heavy) slotsRef.current = slots;
     for (let i = 0; i < count; i++) {
       const el = itemRefs.current[i];
       if (!el) continue;
@@ -198,9 +212,25 @@ export function BannerCarousel({
       el.style.width = `${w}px`;
       el.style.marginLeft = `${-w / 2}px`;
 
-      // Fora da viewport o pano não é repintado.
+      // Fora da viewport nada de pano — nem faixa, nem soft-body no mundo.
+      if (Math.abs(x) > half + pitch) continue;
+      if (heavy) {
+        // Com o motor pesado, o DOM só carrega semântica e área de clique; o
+        // tecido é a malha do ammo desenhada no canvas.
+        slots.push({
+          index: i,
+          x,
+          topY: GONDOLA_INSET,
+          w: w * scale,
+          h: (el.clientHeight || 1) * scale,
+          opacity: Number(el.style.opacity) || 1,
+          centered: dist < 0.5,
+          checked: i === checkedIndexRef.current
+        });
+        continue;
+      }
       const strips = stripRefs.current[i];
-      if (!strips || Math.abs(x) > half + pitch) continue;
+      if (!strips) continue;
       const sway = clothRef.current[i].theta * w * SWAY_FACTOR;
       // Altura de uma faixa em px: converte a derivada do perfil (adimensional)
       // em inclinação px/px, que é a tangente do ângulo de cisalhamento.
@@ -211,6 +241,10 @@ export function BannerCarousel({
         const skew = Math.atan((sway * slopes[s]) / stripH);
         node.style.transform = `translate3d(${sway * profile[s]}px,0,0) skewX(${skew}rad)`;
       }
+    }
+    if (heavy) {
+      heavy.resize(geomRef.current.half * 2, viewportRef.current?.clientHeight || 1);
+      heavy.setSlots(slots);
     }
   }, [count, measure, profile, slopes]);
 
@@ -254,9 +288,14 @@ export function BannerCarousel({
 
       const drive = { accel, velocity: velRef.current };
       let resting = !draggingRef.current && targetRef.current == null;
+      const heavy = engineRef.current;
       if (reduced) {
         // Sem movimento de pano: os estandartes ficam retos.
         if (Math.abs(velRef.current) > 1) resting = false;
+      } else if (heavy) {
+        // Motor pesado: a física é o soft-body do ammo.
+        heavy.step(dt, drive);
+        if (!heavy.atRest(drive)) resting = false;
       } else {
         for (let i = 0; i < count; i++) {
           clothRef.current[i] = stepCloth(clothRef.current[i], drive, dt, paramsFor(i));
@@ -264,6 +303,7 @@ export function BannerCarousel({
         }
       }
       paint();
+      if (heavy && !reduced) heavy.render();
 
       if (resting) {
         rafRef.current = null; // dorme: zero custo com a gôndola parada
@@ -350,6 +390,44 @@ export function BannerCarousel({
     centerTo(alvo);
     setFocusIndex(alvo);
   }, [checkedIndex, homeIndex, count, centerTo, setFocusIndex]);
+
+  useEffect(() => {
+    checkedIndexRef.current = checkedIndex;
+  }, [checkedIndex]);
+
+  // Motor pesado (three + ammo), carregado DEPOIS da montagem por import()
+  // dinâmico: three e ammo viram um chunk separado e não entram no first-load
+  // da home. Qualquer falha — bundle indisponível, sem WebGL, WASM/asm.js
+  // barrado — é engolida de propósito: o carousel continua funcionando no
+  // motor analítico, que é o caminho padrão até este promise resolver.
+  useEffect(() => {
+    if (reduced) return; // reduced-motion nem baixa o motor
+    let alive = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    import("@/lib/cloth/ammoCloth")
+      .then(m => m.createAmmoCloth(canvas, LANGUAGES.map(l => bannerSrc(l.id))))
+      .then(engine => {
+        if (!alive) {
+          engine.dispose();
+          return;
+        }
+        engineRef.current = engine;
+        setHeavyReady(true);
+        paint(); // primeiro layout das malhas
+        engine.render();
+        wake();
+      })
+      .catch(err => {
+        // Silencioso para o jogador; visível para quem depura.
+        console.warn("[cloth] motor pesado indisponível, seguindo no leve:", err?.message ?? err);
+      });
+    return () => {
+      alive = false;
+      engineRef.current?.dispose();
+      engineRef.current = null;
+    };
+  }, [reduced, paint, wake]);
 
   useEffect(
     () => () => {
@@ -449,6 +527,7 @@ export function BannerCarousel({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onWheel={onWheel}
+        data-heavy={heavyReady ? "true" : "false"}
         className="banner-gondola relative h-[210px] sm:h-[268px] cursor-grab overflow-hidden active:cursor-grabbing"
         style={{
           touchAction: "pan-y",
@@ -466,6 +545,14 @@ export function BannerCarousel({
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-[6px] z-[200] h-[2px] bg-gradient-to-r from-transparent via-amber-800/50 to-transparent"
+        />
+        {/* Tela do motor pesado. Fica por baixo dos botões (que continuam
+            recebendo clique e foco) e só aparece quando o ammo carrega. */}
+        <canvas
+          ref={canvasRef}
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[150] h-full w-full"
+          style={{ opacity: heavyReady ? 1 : 0 }}
         />
         <div className="absolute left-1/2 top-0 h-full w-0">
           {LANGUAGES.map((l, i) => {

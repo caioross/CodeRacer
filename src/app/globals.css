@@ -128,6 +128,11 @@
      Os estandartes têm alpha, então sombra e brilho vão em `filter` (drop-shadow
      segue a silhueta) e não em `box-shadow`, que desenharia a caixa retangular
      e devolveria a moldura que a #99 pediu para tirar. */
+  /* Com o motor pesado ativo, o tecido é a malha do ammo no canvas: o pano do
+     DOM some, mas o botão continua ali com semântica, foco e área de clique. */
+  .banner-gondola[data-heavy="true"] .banner-cloth {
+    opacity: 0;
+  }
   .banner-item .banner-cloth {
     transition: filter 200ms ease-out;
     /* Sem drop-shadow aqui: são 24 estandartes, e sombra na silhueta é cara.
