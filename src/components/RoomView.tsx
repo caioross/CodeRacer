@@ -9,6 +9,7 @@ import { useToast } from "./ui/Toast";
 import { Lobby } from "./Lobby";
 import { Race } from "./Race";
 import { Results } from "./Results";
+import { SpectatorView } from "./SpectatorView";
 import { Countdown } from "./Countdown";
 import { MatrixRain } from "./MatrixRain";
 import { useRoom } from "@/lib/useRoom";
@@ -22,7 +23,7 @@ export function RoomView({ roomCode }: { roomCode: string }) {
   const onError = useCallback((msg: string) => toast.push({ kind: "error", text: msg }), [toast]);
   const onLeave = useCallback(() => router.push("/"), [router]);
 
-  const { phase, meId, room, players, isLeader, chat, countdownN, voteTally, myVote, join, actions } =
+  const { phase, meId, room, players, isLeader, isSpectator, chat, countdownN, voteTally, myVote, join, actions } =
     useRoom(roomCode, { onError, onLeave });
 
   // Adapt the realtime state to the RoomState shape the views already expect.
@@ -30,7 +31,9 @@ export function RoomView({ roomCode }: { roomCode: string }) {
     if (!room) return null;
     const startedAt = room.start_at ? Date.parse(room.start_at) : null;
 
-    const live: Player[] = players.map(p => liveToPlayer(p));
+    // Espectadores (entraram depois do start, #64) não são competidores: fora da
+    // pista, do gate de fim e do ranking. Continuam vendo tudo pela SpectatorView.
+    const live: Player[] = players.filter(p => !p.spectator).map(p => liveToPlayer(p));
     const finalFromResults: Player[] | null =
       room.status === "finished" && room.results?.length
         ? room.results.map(r => resultToPlayer(r))
@@ -110,17 +113,20 @@ export function RoomView({ roomCode }: { roomCode: string }) {
           </div>
         )}
 
-        {showRace && (
-          <Race
-            room={compatRoom}
-            meId={meId}
-            isLeader={isLeader}
-            onProgress={actions.sendProgress}
-            onAbandon={actions.abandon}
-            onChat={actions.sendChat}
-            onKick={actions.kick}
-          />
-        )}
+        {showRace &&
+          (isSpectator ? (
+            <SpectatorView room={compatRoom} meId={meId} onChat={actions.sendChat} />
+          ) : (
+            <Race
+              room={compatRoom}
+              meId={meId}
+              isLeader={isLeader}
+              onProgress={actions.sendProgress}
+              onAbandon={actions.abandon}
+              onChat={actions.sendChat}
+              onKick={actions.kick}
+            />
+          ))}
 
         {compatRoom.status === "finished" && (
           <Results

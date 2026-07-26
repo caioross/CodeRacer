@@ -88,6 +88,8 @@ export interface LivePlayer {
   place: number | null;
   ready: boolean;
   abandoned: boolean;
+  /** Entrou depois que a rodada começou — assiste esta rodada, compete na próxima (#64). */
+  spectator: boolean;
 }
 
 export const COUNTDOWN_MS = 4000;
@@ -144,7 +146,8 @@ export interface FinishContext {
  *
  * Não decide NADA sobre ranking: quem não terminou continua fora dos `results`
  * (ver `toResults` em `useRoom.ts`), então encerrar por tempo não é um caminho
- * novo para o leaderboard.
+ * novo para o leaderboard. Os espectadores (#64) já vêm filtrados por quem chama
+ * (só os RACERS entram nesta lista), então a regra não os enxerga.
  */
 export function shouldFinishRace(
   players: readonly FinishCandidate[],
@@ -160,6 +163,33 @@ export function shouldFinishRace(
 
   const someoneFinished = pending.length < players.length;
   return someoneFinished && pending.every(p => now - p.lastActivityAt >= RACE_IDLE_MS); // (2)
+}
+
+// ─── Espectador: quem entra com a corrida já em andamento (#64) ────────────────
+// A lista de participantes ficava aberta durante a partida: um jogador que
+// entrasse já em `racing` passava a compor a mesma rodada, e todos que já tinham
+// terminado ficavam presos esperando o retardatário. A regra: uma partida é
+// composta por quem estava presente quando ela COMEÇOU (o instante `start_at`).
+// Puro e determinístico — `joinedAt` e `start_at` são compartilhados por presence
+// + linha da sala, então todos os clientes classificam igual.
+
+/**
+ * `true` quando um jogador deve assistir a rodada atual em vez de competir: a
+ * rodada está em andamento (`racing`/`finished`) e ele entrou DEPOIS que a
+ * digitação começou (`joinedAt > startMs`). Em `lobby`/countdown ninguém é
+ * espectador — quem está presente antes do start compõe a corrida normalmente.
+ *
+ * @param joinedAt epoch (ms) em que o jogador deu `track` na presence.
+ * @param startMs  epoch (ms) de `rooms.start_at`, ou `null`/0 se não há corrida.
+ */
+export function isSpectatorJoin(
+  joinedAt: number,
+  startMs: number | null,
+  status: RoomStatus
+): boolean {
+  if (status !== "racing" && status !== "finished") return false;
+  if (!startMs) return false;
+  return joinedAt > startMs;
 }
 
 // ─── Allowlist de settings (fronteira de criação/ajuste de sala) ──────────────
