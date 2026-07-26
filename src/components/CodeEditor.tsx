@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
-import { indentEdit } from "@/lib/indent";
+import { enterEdit, indentEdit } from "@/lib/indent";
 import { isMuted, playKey, setMuted } from "@/lib/sound";
 import { useEditorFont } from "@/lib/useEditorFont";
 import { cn } from "@/lib/utils";
@@ -134,17 +134,33 @@ export function CodeEditor({
     if (gutterRef.current) gutterRef.current.scrollTop = st;
   }
 
-  // Tab preenche a indentação que o `target` espera na linha atual (em vez de
-  // mover o foco). A lógica pura vive em `@/lib/indent` (`indentEdit`), imune a
-  // erros anteriores do jogador e sem o antigo fallback tóxico de 2 espaços.
+  // Tab (desktop) e Enter (essencial no touch, que não tem Tab — issue #62)
+  // preenchem a indentação que o `target` espera, em vez de mover o foco / só
+  // quebrar a linha. A lógica pura vive em `@/lib/indent` (`indentEdit`/`enterEdit`),
+  // imune a erros anteriores do jogador e sem o antigo fallback tóxico de 2 espaços.
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    if (e.shiftKey || disabled) return;
     const ta = taRef.current;
     if (!ta) return;
     const start = ta.selectionStart ?? value.length;
     const end = ta.selectionEnd ?? start;
+
+    // Enter: quebra a linha JÁ com a indentação da linha seguinte. IMEs de
+    // teclado virtual que emitem keyCode 229/"Unidentified" simplesmente não
+    // casam aqui → Enter nativo (degradação silenciosa, nunca texto errado).
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+      if (disabled) return;
+      const { text, caret } = enterEdit(value, target, start, end);
+      if (text === value) return; // sem indentação a preencher → deixa o Enter nativo
+      e.preventDefault();
+      pendingCaret.current = caret;
+      playKey();
+      onChange(text);
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    if (e.shiftKey || disabled) return;
     const { text, caret } = indentEdit(value, target, start, end);
     if (text === value) return; // nada a inserir — sem re-render nem mexer no caret
     pendingCaret.current = caret;
