@@ -2,6 +2,7 @@
 // Runs only on the server — uses the service-role key (or anon as fallback),
 // never shipped to the browser.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { MAX_PLAUSIBLE_WPM } from "./room";
 
 let client: SupabaseClient | null = null;
 
@@ -51,6 +52,11 @@ export async function getLeaderboard(limit = 25): Promise<LeaderRow[]> {
   const { data, error } = await sb
     .from("leaderboard")
     .select("name, wpm, accuracy, errors, language, difficulty, created_at")
+    // Defesa em profundidade: `sanitizeResults` já barra WPM implausível na
+    // escrita, mas registros legados (gravados antes do guard) continuam vivos
+    // em `scores`. Reusar MAX_PLAUSIBLE_WPM aqui mantém teto de escrita e de
+    // leitura sempre iguais — nada acima dele polui o ranking público (#68/#28).
+    .lte("wpm", MAX_PLAUSIBLE_WPM)
     .order("wpm", { ascending: false })
     .limit(limit);
   if (error) {
@@ -69,6 +75,10 @@ export async function getRecentMatches(limit = 12): Promise<MatchRow[]> {
     .select(
       "id, room_code, language, difficulty, snippet_title, player_count, winner_name, winner_wpm, finished_at"
     )
+    // Mesmo teto do leaderboard: uma partida cujo vencedor tem WPM impossível
+    // não deve exibir esse número. Mantém matches sem vencedor ranqueado
+    // (`winner_wpm` nulo) e só oculta os implausíveis (#68/#28).
+    .or(`winner_wpm.is.null,winner_wpm.lte.${MAX_PLAUSIBLE_WPM}`)
     .order("finished_at", { ascending: false })
     .limit(limit);
   if (error) {
