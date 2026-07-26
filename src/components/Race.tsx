@@ -39,6 +39,7 @@ export function Race({
         onProgress={onProgress}
         heartbeat
         onAbandon={onAbandon}
+        idleForfeit
       />
 
       <FloatingChat
