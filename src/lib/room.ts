@@ -141,8 +141,8 @@ export function resolveDifficulty(
 export const MAX_PLAUSIBLE_WPM = 350;
 /** Teto de comprimento de nick — espelha o cap do cliente em `useRoom` (`join`). */
 export const MAX_NAME_LEN = 20;
-/** Teto absoluto de jogadores por sala — espelha o cap de `settings` na API. */
-export const ABSOLUTE_MAX_PLAYERS = 12;
+/** Teto absoluto de jogadores por sala — fonte única do cap (API + sliders da UI). */
+export const ABSOLUTE_MAX_PLAYERS = 30;
 
 /** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
 export function clampInt(n: unknown, min: number, max: number): number {

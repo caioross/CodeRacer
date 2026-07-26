@@ -16,7 +16,7 @@ import { SpotlightCard } from "./ui/SpotlightCard";
 import { StarBorder } from "./ui/StarBorder";
 import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, langById, type LangId, type Difficulty } from "@/lib/languages";
-import { newPlayerId } from "@/lib/room";
+import { newPlayerId, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 import { useAuth } from "@/lib/useAuth";
 
 const PERSIST_NAME_KEY = "coderacer:name";
@@ -466,14 +466,14 @@ export function HomeView() {
             <input
               type="range"
               min={2}
-              max={12}
+              max={ABSOLUTE_MAX_PLAYERS}
               value={maxPlayers}
               onChange={e => setMaxPlayers(Number(e.target.value))}
               className="w-full mt-2 accent-[#00ff88]"
             />
             <div className="flex justify-between text-[10px] text-text-dim font-mono mt-1">
               <span>2</span>
-              <span>12</span>
+              <span>{ABSOLUTE_MAX_PLAYERS}</span>
             </div>
           </div>
 

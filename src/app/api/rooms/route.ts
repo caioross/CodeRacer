@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { customAlphabet } from "nanoid";
 import { getServerSupabase } from "@/lib/supabase";
-import { resolveDifficulty, resolveLang } from "@/lib/room";
+import { resolveDifficulty, resolveLang, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const maxPlayers = Math.min(Math.max(Number(settings.maxPlayers) || 6, 2), 12);
+  const maxPlayers = Math.min(Math.max(Number(settings.maxPlayers) || 6, 2), ABSOLUTE_MAX_PLAYERS);
 
   // Retry a couple of times on the (very unlikely) code collision.
   for (let attempt = 0; attempt < 5; attempt++) {
