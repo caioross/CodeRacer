@@ -56,6 +56,10 @@ export function CodeDisplay({
 
       <div
         ref={containerRef}
+        // Cortesia, não defesa: impede o arrasto mais óbvio do alvo para o editor (#61). A
+        // defesa real é o `onDrop` do CodeEditor — o snippet também sai por outra aba/API.
+        // Sem `user-select: none`: selecionar/copiar o alvo continua acessível.
+        onDragStart={e => e.preventDefault()}
         className="font-mono text-sm md:text-[15px] leading-7 px-4 py-4 overflow-y-auto overflow-x-hidden max-h-[44vh] whitespace-pre-wrap [overflow-wrap:anywhere]"
       >
         {chars.map((ch, i) => {
