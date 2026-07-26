@@ -14,7 +14,17 @@ export type LangId =
   | "ruby"
   | "php"
   | "kotlin"
-  | "swift";
+  | "swift"
+  | "lua"
+  | "dart"
+  | "scala"
+  | "elixir"
+  | "erlang"
+  | "haskell"
+  | "julia"
+  | "clojure"
+  | "fortran"
+  | "cobol";
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -39,7 +49,17 @@ export const LANGUAGES: LangMeta[] = [
   { id: "ruby", label: "Ruby", color: "#cc342d", icon: "RB" },
   { id: "php", label: "PHP", color: "#777bb4", icon: "PHP" },
   { id: "kotlin", label: "Kotlin", color: "#7f52ff", icon: "KT" },
-  { id: "swift", label: "Swift", color: "#f05138", icon: "SW" }
+  { id: "swift", label: "Swift", color: "#f05138", icon: "SW" },
+  { id: "lua", label: "Lua", color: "#2c2d72", icon: "LUA" },
+  { id: "dart", label: "Dart", color: "#0175c2", icon: "DT" },
+  { id: "scala", label: "Scala", color: "#dc322f", icon: "SC" },
+  { id: "elixir", label: "Elixir", color: "#4b275f", icon: "EX" },
+  { id: "erlang", label: "Erlang", color: "#a90533", icon: "ERL" },
+  { id: "haskell", label: "Haskell", color: "#5e5086", icon: "HS" },
+  { id: "julia", label: "Julia", color: "#9558b2", icon: "JL" },
+  { id: "clojure", label: "Clojure", color: "#5881d8", icon: "CLJ" },
+  { id: "fortran", label: "Fortran", color: "#734f96", icon: "F90" },
+  { id: "cobol", label: "COBOL", color: "#005ca5", icon: "CBL" }
 ];
 
 export const DIFFICULTIES: { id: Difficulty; label: string; desc: string }[] = [
