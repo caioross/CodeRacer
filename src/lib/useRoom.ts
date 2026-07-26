@@ -50,6 +50,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const claimingRef = useRef(false);
   const lastSentRef = useRef(0);
   const lastStartRef = useRef<string | null>(null);
+  // Espelhos (não-reativos) para os handlers do canal, que fecham sobre o estado
+  // uma única vez: resolvem o NOME da vítima e evitam anunciar o mesmo kick 2x.
+  const presenceRef = useRef<Record<string, PresenceMeta>>({});
+  const roomRef = useRef<RoomRow | null>(null);
+  const announcedKicksRef = useRef<Set<string>>(new Set());
   const onErrorRef = useRef(onError);
   const onLeaveRef = useRef(onLeave);
   onErrorRef.current = onError;
@@ -130,8 +135,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           onLeaveRef.current?.();
           return;
         }
-        setRoom(json.room as RoomRow);
-        lastStartRef.current = (json.room as RoomRow).start_at;
+        const seeded = json.room as RoomRow;
+        roomRef.current = seeded;
+        setRoom(seeded);
+        lastStartRef.current = seeded.start_at;
+        // Kicks já persistidos ao entrar são passado — não os anuncie como novos.
+        for (const k of Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : []) {
+          announcedKicksRef.current.add(k);
+        }
       } catch {
         if (cancelled) return;
         fail("Não foi possível carregar a sala");
@@ -151,6 +162,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           const metas = state[key];
           if (metas && metas[0]) map[key] = metas[0];
         }
+        presenceRef.current = map;
         setPresence(map);
       });
       channel.on("presence", { event: "join" }, ({ newPresences }) => {
@@ -168,6 +180,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       });
       channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
         for (const p of leftPresences as unknown as PresenceMeta[]) {
+          // Expulso pelo líder já ganhou a própria notificação ("removido") —
+          // não duplique com um genérico "saiu". `kicked_ids` do servidor é a
+          // fonte da verdade e já chegou (foi o que fez a vítima sair).
+          const kicked = roomRef.current?.kicked_ids;
+          if (Array.isArray(kicked) && kicked.includes(p.id)) continue;
           pushSystem(`${p.name} saiu`);
         }
       });
@@ -197,9 +214,10 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         payload => {
           const next = payload.new as RoomRow;
           if (!next || !next.code) return;
+          const kicks = Array.isArray(next.kicked_ids) ? next.kicked_ids : [];
           // Expulsão com autoridade (#39): a saída só é definitiva quando o
           // servidor registra meu id em `kicked_ids` — nunca por broadcast.
-          if (Array.isArray(next.kicked_ids) && next.kicked_ids.includes(id)) {
+          if (kicks.includes(id)) {
             try {
               sessionStorage.removeItem(SESSION_KEY(code));
             } catch {}
@@ -207,6 +225,20 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
             onLeaveRef.current?.();
             return;
           }
+          // Notifica TODA a sala (#66) sobre cada expulsão nova, resolvendo o
+          // nome pela presence do momento (a vítima ainda não saiu do canal).
+          // Rider do mesmo update autoritativo — nenhum broadcast novo a confiar.
+          if (kicks.length === 0) {
+            announcedKicksRef.current.clear(); // `reset` zerou os kicks
+          } else {
+            for (const kid of kicks) {
+              if (announcedKicksRef.current.has(kid)) continue;
+              announcedKicksRef.current.add(kid);
+              const nome = presenceRef.current[kid]?.name;
+              if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
+            }
+          }
+          roomRef.current = next;
           setRoom(next);
         }
       );

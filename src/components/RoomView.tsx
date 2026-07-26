@@ -113,9 +113,11 @@ export function RoomView({ roomCode }: { roomCode: string }) {
           <Race
             room={compatRoom}
             meId={meId}
+            isLeader={isLeader}
             onProgress={actions.sendProgress}
             onAbandon={actions.abandon}
             onChat={actions.sendChat}
+            onKick={actions.kick}
           />
         )}
 
