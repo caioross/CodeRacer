@@ -214,12 +214,26 @@ export function HomeView() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={auth.signInWithGoogle}
-                className="btn-secondary text-xs px-3 py-1.5"
-              >
-                <GoogleIcon /> entrar com Google
-              </button>
+              // O hero promete "sem cadastro, sem firula"; sem esta pista o botão
+              // de login lê como requisito e trava o visitante na entrada
+              // (persona Iniciante, D#14 → issue #17). Entrar só pré-preenche o nick.
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={auth.signInWithGoogle}
+                  title="Opcional — entrar só pré-preenche seu nick. Dá para jogar sem conta."
+                  aria-label="Entrar com Google (opcional — dá para jogar sem conta)"
+                  className="btn-secondary text-xs px-3 py-1.5"
+                >
+                  <GoogleIcon /> entrar com Google
+                </button>
+                {/* Redundante para leitor de tela (já está no aria-label do botão). */}
+                <span
+                  aria-hidden="true"
+                  className="hidden sm:inline text-[10px] font-mono text-text-dim"
+                >
+                  opcional
+                </span>
+              </div>
             ))}
 
           <div className="hidden md:flex items-center gap-2 text-xs font-mono text-text-muted">
@@ -298,6 +312,12 @@ export function HomeView() {
                   onChange={e => setName(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && setCreateOpen(true)}
                 />
+                {/* Cobre o mobile, onde o "opcional" do header fica escondido
+                    (`hidden sm:inline`): aqui é onde o jogador de fato age. */}
+                <p className="mt-1.5 text-[11px] font-mono text-text-dim">
+                  <span className="text-neon-green">// </span>
+                  é só o nick — sem conta, sem e-mail
+                </p>
               </div>
 
               <StarBorder
