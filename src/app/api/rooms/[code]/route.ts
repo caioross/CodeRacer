@@ -11,6 +11,7 @@ import {
   resolveDifficulty,
   resolveLang,
   sanitizeResults,
+  ABSOLUTE_MAX_PLAYERS,
   type ResultRow,
   type RoomRow
 } from "@/lib/room";
@@ -74,7 +75,7 @@ export async function POST(req: Request, { params }: { params: { code: string } 
         .update({
           language: lang.value,
           difficulty: difficulty.value,
-          max_players: Math.min(Math.max(Number(s.maxPlayers) || room.max_players, 2), 12)
+          max_players: Math.min(Math.max(Number(s.maxPlayers) || room.max_players, 2), ABSOLUTE_MAX_PLAYERS)
         })
         .eq("code", code);
       return NextResponse.json({ ok: true });

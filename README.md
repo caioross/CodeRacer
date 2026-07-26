@@ -55,7 +55,7 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 
 | | Recurso | Detalhe |
 |:--:|:--|:--|
-| 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **12 jogadores**. |
+| 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **30 jogadores**. |
 | 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — em **fácil / médio / difícil**. |
 | 📊 | **Métricas ao vivo** | **WPM**, **precisão**, **erros** e progresso por jogador, atualizados a cada tecla. |
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
@@ -341,7 +341,7 @@ signup, no friction: just create and play.
 
 | | Feature | Detail |
 |:--:|:--|:--|
-| 🏁 | **Real-time rooms** | **6-letter** invite code — or just share the link. Up to **12 players**. |
+| 🏁 | **Real-time rooms** | **6-letter** invite code — or just share the link. Up to **30 players**. |
 | 💻 | **8 languages** | JavaScript, TypeScript, Python, Java, C#, C++, Go and Rust — in **easy / medium / hard**. |
 | 📊 | **Live metrics** | **WPM**, **accuracy**, **errors** and per-player progress, updated on every keystroke. |
 | 🏆 | **Podium** | Gold/silver/bronze at the end + full standings with time. The leader restarts the match. |

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X, Zap } from "lucide-react";
 import type { RoomState } from "@/lib/types";
+import { ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 import { LANGUAGES, DIFFICULTIES, type Difficulty, type LangId } from "@/lib/languages";
 import { Chat } from "./Chat";
 import { PlayerList } from "./PlayerList";
@@ -190,7 +191,7 @@ export function Lobby({
               <input
                 type="range"
                 min={2}
-                max={12}
+                max={ABSOLUTE_MAX_PLAYERS}
                 disabled={!isLeader}
                 value={room.settings.maxPlayers}
                 onChange={e =>

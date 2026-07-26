@@ -419,7 +419,7 @@ Depois do load, o logo mantém **ShinyText** em loop lento (brilho cruza a cada 
 - **Botão entrar (→):** `GlareHover` (reflexo diagonal passa no hover).
 - **Cursor:** `Crosshair` global (desktop apenas; `pointer: fine`). Esconde o cursor nativo, desenha uma mira fina `--neon-green` 30% que segue com lerp. Off em touch e na tela de corrida.
 
-**Features (MagicBento):** 3 cards (snippets reais / até 12 jogadores / WPM+precisão). Cada um: hover levanta (`elevation-2` + scale 1.02, `spring-snappy`), borda ganha cor do tema, e uma partícula/spotlight interno acende. Ícone com micro-bounce no hover.
+**Features (MagicBento):** 3 cards (snippets reais / até 30 jogadores / WPM+precisão). Cada um: hover levanta (`elevation-2` + scale 1.02, `spring-snappy`), borda ganha cor do tema, e uma partícula/spotlight interno acende. Ícone com micro-bounce no hover.
 
 **Header:** aparece com slide-down sutil (−8→0) no load (200ms). "● online" pulsa (mantém). Auth/ranking com `GlareHover`. Sticky com `backdrop-blur` ao rolar.
 
@@ -455,7 +455,7 @@ Escolher linguagem, dificuldade e máx. de jogadores **sem fricção**, com prev
 - **Entrada do modal:** backdrop fade (0→1, 250ms) + `backdrop-blur`; card sobe (y:20→0, scale 0.98→1, `ease-out-expo`, 400ms). Saída: 60% da duração, `ease-in-quad`. (Base já existe em `Modal.tsx` — refinar valores e adicionar focus-trap.)
 - **Seleção de linguagem (grid 4 col):** cada botão é um mini-card. Selecionado: borda `--neon-green` + `bg-neon-green/10` + `glow-green` + ícone com micro-scale 1→1.1 (`spring-bouncy`). Hover: `TiltedCard` leve (rotateX/Y ≤ 6°). A cor de cada linguagem (`languages.ts`) tinge o glow do hover (JS amarelo, Rust laranja...) — detalhe que devs notam.
 - **Dificuldade (3 col):** idem, cor cyan. Mostra `desc` (já existe). Selecionado pulsa 1× ao trocar.
-- **Slider de jogadores:** trilho customizado (não o nativo cru) — preenchimento `--neon-green`, thumb com `glow-green`, valor em `tabular-nums` que faz count-up ao arrastar. Marcas em 2 e 12.
+- **Slider de jogadores:** trilho customizado (não o nativo cru) — preenchimento `--neon-green`, thumb com `glow-green`, valor em `tabular-nums` que faz count-up ao arrastar. Marcas em 2 e 30.
 - **Botão "criar sala →":** StarBorder + estado loading.
 
 ### Acessibilidade
