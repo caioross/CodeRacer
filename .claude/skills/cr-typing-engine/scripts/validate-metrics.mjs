@@ -251,6 +251,18 @@ function indentEdit(value, target, selStart, selEnd = selStart) {
   };
 }
 
+// Espelho de src/lib/indent.ts (enterEdit — auto-indent no Enter, issue #62).
+function enterEdit(value, target, selStart, selEnd = selStart) {
+  const noop = { text: value, caret: selStart };
+  if (selStart < 0 || selStart > value.length || selEnd < selStart || selEnd > value.length)
+    return noop;
+  if (selEnd !== value.length) return noop; // só quebra no fim do texto digitado
+  const withNl = value.slice(0, selStart) + "\n" + value.slice(selEnd);
+  const { text, caret } = indentEdit(withNl, target, selStart + 1);
+  if (text === withNl) return noop; // sem indentação a preencher → Enter nativo
+  return { text, caret };
+}
+
 /** Igualdade estrita (string/número), para além do `assert` com tolerância. */
 function assertEq(label, actual, expected) {
   const ok = actual === expected;
@@ -308,6 +320,38 @@ assertEq("linha além do target → no-op", c31.text, "a\nb\n");
 const sel = "def soma(numeros):\nZZ";
 const c32 = indentEdit(sel, py, 19, 21); // seleciona "ZZ"
 assertEq("seleção substituída pelos 4 espaços", c32.text, l1 + "    ");
+
+console.log("\n── Auto-indent no Enter (#62, touch sem Tab) ────────────────────");
+
+// Caso 33: Enter no fim da linha 1 → \n + os 4 espaços da linha 2 (nem 1 a mais)
+const e33 = enterEdit("def soma(numeros):", py, 18);
+assertEq("Enter no fim da linha 1 → \\n + 4 espaços", e33.text, l1 + "    ");
+assert("caret após \\n + 4 espaços", e33.caret, 23);
+
+// Caso 34: honestidade — os espaços do Enter batem o target char-a-char
+assertEq("indent do Enter é 100% correto vs target",
+  correctChars(e33.text, py), e33.text.length);
+
+// Caso 35: erro anterior (offset cru divergente) → ainda indenta certo pela linha lógica
+const e35 = enterEdit("def somaX(numeros):", "def somaX(numeros):\n    return 0", 19);
+assertEq("Enter com erro anterior ainda insere 4 espaços",
+  e35.text, "def somaX(numeros):\n    ");
+
+// Caso 36: linha seguinte sem indentação → no-op (Enter nativo, sem lixo)
+const e36 = enterEdit("a", "a\nb\n", 1);
+assertEq("Enter com linha seguinte rasa → no-op", e36.text, "a");
+
+// Caso 37: caret no meio da linha → no-op (não empurra/indenta conteúdo)
+const e37 = enterEdit("def soma(numeros):", py, 5);
+assertEq("Enter no meio da linha → no-op", e37.text, "def soma(numeros):");
+
+// Caso 38: target com menos linhas que o digitado → no-op honesto
+const e38 = enterEdit("linha unica", "linha unica", 11);
+assertEq("Enter sem próxima linha no target → no-op", e38.text, "linha unica");
+
+// Caso 39: seleção até o fim é substituída por \n + indentação
+const e39 = enterEdit("def soma(numeros):YY", py, 18, 20);
+assertEq("Enter substitui seleção final por \\n + 4 espaços", e39.text, l1 + "    ");
 
 // ─── Resultado final ─────────────────────────────────────────────────────────
 
