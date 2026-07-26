@@ -129,6 +129,19 @@ Adicione `&leader=0` para ver a tela pelos olhos de quem **não** é líder. Os 
 existe em produção:** o gate é `NODE_ENV` (variável de build), então o `import()` do harness é
 eliminado pelo webpack e `/harness/results` responde 404 no build de produção.
 
+A **corrida em si** tem o mesmo problema — só existe atrás de uma sala com Realtime, o que
+tornava o layout mobile impossível de medir sem jogar. Abra
+**http://localhost:3000/harness/race** para montá-la com dados sintéticos:
+
+| Cenário | URL | Para quê |
+|:--|:--|:--|
+| 4 jogadores | `?n=pelotao` | pista cheia (padrão) |
+| 2 jogadores | `?n=duo` | o caso mais comum no mobile |
+
+Serve para conferir a geometria em viewport estreita — em 375×812 (ou 375×480, emulando o
+teclado virtual aberto) o código-alvo e o caret precisam ficar visíveis ao mesmo tempo. Os
+fixtures ficam em `src/components/dev/race.fixtures.ts`, com o mesmo gate de `NODE_ENV`.
+
 ### 🧠 Como o WPM é calculado
 
 Segue o **padrão da indústria** (igual a Monkeytype/TypeRacer):
