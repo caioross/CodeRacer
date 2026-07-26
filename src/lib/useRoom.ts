@@ -7,6 +7,7 @@ import {
   colorForId,
   newPlayerId,
   shouldFinishRace,
+  isSpectatorJoin,
   RACE_DECISION_TICK_MS,
   type ChatMsg,
   type LivePlayer,
@@ -285,6 +286,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   }, [room?.status, startMs]);
 
   // Merge presence + progress into the live roster, with finishing places.
+  const roomStatus = room?.status;
   const players: LivePlayer[] = useMemo(() => {
     const list = Object.values(presence).map<LivePlayer>(meta => {
       const pr = progress[meta.id];
@@ -300,7 +302,9 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         finishedAt: pr?.finishedAt ?? null,
         place: null,
         ready: readyMap[meta.id] ?? false,
-        abandoned: pr?.abandoned ?? false
+        abandoned: pr?.abandoned ?? false,
+        // Entrou com a corrida já rolando → assiste esta rodada (#64).
+        spectator: isSpectatorJoin(meta.joinedAt, startMs || null, roomStatus ?? "lobby")
       };
     });
     // Only players who actually completed get a place — abandons don't rank.
@@ -309,9 +313,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       .sort((a, b) => (a.finishedAt as number) - (b.finishedAt as number));
     finishers.forEach((p, i) => (p.place = i + 1));
     return list;
-  }, [presence, progress, readyMap]);
+  }, [presence, progress, readyMap, startMs, roomStatus]);
 
   const isLeader = !!room && !!meId && room.leader_id === meId;
+  // Sou espectador desta rodada? (entrei depois do start.)
+  const isSpectator = !!meId && (players.find(p => p.id === meId)?.spectator ?? false);
   const countdownN =
     room?.status === "racing" && startMs && now < startMs
       ? Math.max(1, Math.ceil((startMs - now) / 1000))
@@ -341,19 +347,21 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   playersRef.current = players;
 
   // Leader finalizes the match: everyone finished, the stragglers went idle, or
-  // the race blew past its time budget (`shouldFinishRace` in ./room).
+  // the race blew past its time budget (`shouldFinishRace` in ./room). Espectadores
+  // (entraram depois do start, #64) ficam FORA da decisão e dos results — senão um
+  // retardatário sem `finishedAt` prenderia a sala em `racing`. Competem na próxima.
   const snippetLength = room?.snippet?.code.length ?? 0;
   const maybeFinish = useCallback(() => {
     if (!isLeader || room?.status !== "racing" || finishPostedRef.current || !startMs) return;
-    const list = playersRef.current;
-    const decide = list.map(p => ({
+    const racers = playersRef.current.filter(p => !p.spectator);
+    const decide = racers.map(p => ({
       finishedAt: p.finishedAt,
       // Quem nunca mandou `progress` conta como ativo desde o start.
       lastActivityAt: lastActivityRef.current[p.id] ?? startMs
     }));
     if (!shouldFinishRace(decide, { startMs, now: Date.now(), snippetLength })) return;
     finishPostedRef.current = true;
-    postAction("finish", { results: toResults(list) });
+    postAction("finish", { results: toResults(racers) });
   }, [isLeader, room?.status, snippetLength, startMs, postAction, toResults]);
 
   // Caminho imediato: alguém terminou/saiu e isso fechou a corrida.
@@ -483,6 +491,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     room,
     players,
     isLeader,
+    isSpectator,
     chat,
     countdownN,
     join,

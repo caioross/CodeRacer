@@ -4,6 +4,7 @@ import {
   clampInt,
   raceTimeoutMs,
   shouldFinishRace,
+  isSpectatorJoin,
   MAX_PLAUSIBLE_WPM,
   MAX_NAME_LEN,
   ABSOLUTE_MAX_PLAYERS,
@@ -264,5 +265,35 @@ describe("shouldFinishRace — a corrida continua", () => {
     const solo = [running(START + 1_000)];
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT - 1 })).toBe(false);
     expect(shouldFinishRace(solo, { ...CTX, now: START + TIMEOUT })).toBe(true);
+  });
+});
+
+// Espectador (#64): a partida é composta por quem estava presente quando ela
+// começou. `isSpectatorJoin` classifica um retardatário como espectador desta
+// rodada — determinístico, mesmo `joinedAt`/`start_at` em todos os clientes.
+describe("isSpectatorJoin", () => {
+  it("entrou depois do start em racing → espectador", () => {
+    expect(isSpectatorJoin(START + 5_000, START, "racing")).toBe(true);
+  });
+
+  it("já estava presente antes do start → competidor", () => {
+    expect(isSpectatorJoin(START - 4_000, START, "racing")).toBe(false);
+  });
+
+  it("empate exato no start não é espectador (>, não >=)", () => {
+    expect(isSpectatorJoin(START, START, "racing")).toBe(false);
+  });
+
+  it("entrou durante a tela de resultado → espectador (compete na próxima)", () => {
+    expect(isSpectatorJoin(START + 90_000, START, "finished")).toBe(true);
+  });
+
+  it("em lobby ninguém é espectador, mesmo com start_at antigo", () => {
+    expect(isSpectatorJoin(START + 5_000, START, "lobby")).toBe(false);
+  });
+
+  it("sem corrida (startMs null/0) nunca é espectador", () => {
+    expect(isSpectatorJoin(START, null, "racing")).toBe(false);
+    expect(isSpectatorJoin(START, 0, "racing")).toBe(false);
   });
 });
