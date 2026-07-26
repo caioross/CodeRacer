@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X } from "lucide-react";
+import { Check, Crown, Play, Settings as SettingsIcon, Share2, Users, X, Zap } from "lucide-react";
 import type { RoomState } from "@/lib/types";
 import { LANGUAGES, DIFFICULTIES, type Difficulty, type LangId } from "@/lib/languages";
 import { Chat } from "./Chat";
@@ -78,17 +78,27 @@ export function Lobby({
             </div>
             <div className="flex items-center gap-2">
               {!isLeader && (
+                // Destaque do CTA (issue #71): quando NÃO está pronto, é o botão
+                // primário verde, maior e pulsando — é a ação que o jogador precisa
+                // achar. Uma vez pronto, vira um estado calmo e claramente concluído
+                // (verde + check), sem competir por atenção. Antes era o inverso.
                 <button
                   onClick={() => onSetReady(!myReady)}
-                  className={myReady ? "btn-primary" : "btn-secondary"}
+                  className={
+                    myReady
+                      ? "btn-secondary border-neon-green/50 text-neon-green"
+                      : "btn-primary animate-ready-pulse px-5 py-2.5 text-sm font-bold"
+                  }
                   aria-pressed={myReady}
                 >
                   {myReady ? (
                     <>
-                      <Check className="size-4" /> pronto
+                      <Check className="size-4" /> pronto!
                     </>
                   ) : (
-                    "marcar como pronto"
+                    <>
+                      <Zap className="size-4" /> Ficar pronto
+                    </>
                   )}
                 </button>
               )}
