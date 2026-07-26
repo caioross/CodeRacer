@@ -311,6 +311,11 @@ export function CodeEditor({
               syncCaret();
             }}
             onPaste={onPaste}
+            // `drop` NÃO passa por `onPaste` — é outro evento, e soltar o snippet-alvo aqui
+            // preenchia a corrida inteira com 0 erros (issue #61). O par dragover+drop é
+            // necessário: sem cancelar o `dragover` o `drop` não chega cancelável em todo motor.
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => e.preventDefault()}
             onScroll={onScroll}
             onKeyDown={onKeyDown}
             onKeyUp={syncCaret}
