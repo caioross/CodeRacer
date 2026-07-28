@@ -121,6 +121,42 @@
     font-weight: 600;
   }
 
+  /* Gôndola de estandartes (#97/#99). Sem fundo próprio: os estandartes ficam
+     suspensos sobre o fundo da aplicação. `data-centered` é escrito pelo rAF do
+     BannerCarousel — nada aqui depende de re-render do React.
+
+     Os estandartes têm alpha, então sombra e brilho vão em `filter` (drop-shadow
+     segue a silhueta) e não em `box-shadow`, que desenharia a caixa retangular
+     e devolveria a moldura que a #99 pediu para tirar. */
+  /* Com o motor pesado ativo, o tecido é a malha do ammo no canvas: o pano do
+     DOM some, mas o botão continua ali com semântica, foco e área de clique. */
+  .banner-gondola[data-heavy="true"] .banner-cloth {
+    opacity: 0;
+  }
+  .banner-item .banner-cloth {
+    transition: filter 200ms ease-out;
+    /* Sem drop-shadow aqui: são 24 estandartes, e sombra na silhueta é cara.
+       Só quem está em evidência (1–2 por vez) paga esse custo. */
+    filter: brightness(0.5) saturate(0.6);
+  }
+  /* Centralizado = à luz da tocha, com destaque forte contra os vizinhos. */
+  .banner-item[data-centered="true"] .banner-cloth {
+    filter: brightness(1.12) saturate(1.15) contrast(1.06)
+      drop-shadow(0 10px 18px rgba(0, 0, 0, 0.65));
+  }
+  /* Escolhido = halo verde na silhueta. Estado distinto do centralizado: na
+     votação do lobby dá para navegar pela gôndola sem votar. */
+  .banner-item[aria-checked="true"] .banner-cloth {
+    filter: brightness(1.14) saturate(1.2) contrast(1.06)
+      drop-shadow(0 0 5px rgba(0, 255, 136, 0.85)) drop-shadow(0 0 14px rgba(0, 255, 136, 0.4))
+      drop-shadow(0 10px 18px rgba(0, 0, 0, 0.65));
+  }
+  .banner-item:focus-visible .banner-cloth {
+    filter: brightness(1.14) saturate(1.15)
+      drop-shadow(0 0 4px rgba(0, 229, 255, 0.95)) drop-shadow(0 0 12px rgba(0, 229, 255, 0.5))
+      drop-shadow(0 10px 18px rgba(0, 0, 0, 0.65));
+  }
+
   .glow-text-green { text-shadow: 0 0 8px rgba(0,255,136,0.6); }
   .glow-text-cyan { text-shadow: 0 0 8px rgba(0,229,255,0.6); }
   .glow-text-violet { text-shadow: 0 0 8px rgba(168,85,247,0.6); }
