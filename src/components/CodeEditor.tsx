@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText } from "lucide-react";
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 // O tamanho e o piso da fonte vêm de `useEditorFont` (issue #53): no toque o
 // editor nasce em 16px e não desce dali, senão o iOS dá zoom ao focar.
 
-export function CodeEditor({
+function CodeEditorImpl({
   value,
   onChange,
   onPaste,
@@ -373,3 +373,8 @@ export function CodeEditor({
     </div>
   );
 }
+
+// Memo (#59): a superfície de digitação não depende do roster. Todas as props
+// vindas do TypingCore são primitivas ou callbacks estáveis, então progresso de
+// adversário e o tick de 200ms param aqui em vez de tocar a textarea.
+export const CodeEditor = memo(CodeEditorImpl);

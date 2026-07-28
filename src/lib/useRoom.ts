@@ -56,6 +56,11 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const myReadyRef = useRef(false);
   const myVoteRef = useRef<LangId | null>(null);
   const myMetaRef = useRef<PresenceMeta | null>(null);
+  // Última mensagem de progresso que EU emiti. `abandon` lê daqui em vez de ler
+  // `progress[meId]` do state: se ele dependesse de `progress`, ganharia
+  // identidade nova a CADA mensagem de adversário e invalidaria o `memo` de
+  // TypingCore/CodeEditor rio abaixo — o custo que a #59 ataca.
+  const myLastMsgRef = useRef<ProgressMsg | null>(null);
   const finishPostedRef = useRef(false);
   // Epoch do último `progress` de cada jogador — alimenta o critério de
   // inatividade do encerramento. Ref (não state) para não re-renderizar durante
@@ -311,6 +316,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       lastStartRef.current = sa;
       if (room?.status === "racing") {
         myFinishRef.current = null;
+        myLastMsgRef.current = null;
         myAbandonRef.current = false;
         myReadyRef.current = false;
         myVoteRef.current = null;
@@ -323,6 +329,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     }
     if (room?.status === "lobby") {
       myFinishRef.current = null;
+      myLastMsgRef.current = null;
       myAbandonRef.current = false;
       myReadyRef.current = false;
       myVoteRef.current = null;
@@ -504,6 +511,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         abandoned: myAbandonRef.current
       };
       // Optimistically update my own row.
+      myLastMsgRef.current = msg;
       lastActivityRef.current[id] = Date.now();
       setProgress(prev => ({ ...prev, [id]: msg }));
       const t = Date.now();
@@ -522,9 +530,9 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   );
 
   const abandon = useCallback(() => {
-    const me = progress[meIdRef.current || ""];
+    const me = myLastMsgRef.current;
     broadcastProgress(me?.progress ?? 0, me?.wpm ?? 0, me?.accuracy ?? 100, me?.errors ?? 0, true);
-  }, [broadcastProgress, progress]);
+  }, [broadcastProgress]);
 
   const sendChat = useCallback((text: string) => {
     const id = meIdRef.current;
