@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlarmClock, Target, Timer, Zap } from "lucide-react";
 import { CodeDisplay } from "./CodeDisplay";
@@ -27,7 +27,7 @@ const IDLE_TICK_MS = 500;
 // núcleo com RaceTrack/FloatingChat; o modo Practice o usa sozinho.
 // Área sagrada (HANDBOOK §2): nenhuma fórmula, hook ou trabalho por keystroke
 // foi alterado na extração — mesma latência de input de antes.
-export function TypingCore({
+function TypingCoreImpl({
   code,
   language,
   startedAt,
@@ -259,6 +259,12 @@ export function TypingCore({
     </div>
   );
 }
+
+// Memo (#59): corta na RAIZ o tráfego de progresso alheio. O <Race> re-renderiza
+// a cada mensagem (a pista TEM de andar), mas as props do núcleo — code/language/
+// startedAt/finishedAt/onProgress/onAbandon — são estáveis durante a corrida, então
+// nada abaixo daqui re-renderiza por causa dos outros jogadores.
+export const TypingCore = memo(TypingCoreImpl);
 
 // Aviso de inatividade com contagem regressiva (#65). `secondsLeft === null` =
 // sem aviso. `aria-live="assertive"` para o leitor de tela anunciar o alerta.

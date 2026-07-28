@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { charColors } from "@/lib/highlight";
 
@@ -11,7 +11,7 @@ import { charColors } from "@/lib/highlight";
  * - typed-wrong: red error background
  * - char at cursor: green highlight
  */
-export function CodeDisplay({
+function CodeDisplayImpl({
   code,
   typed,
   language
@@ -101,3 +101,9 @@ export function CodeDisplay({
     </div>
   );
 }
+
+// Memo (#59): o alvo só depende de code/typed/language — nenhum deles muda
+// quando um ADVERSÁRIO progride nem no tick de 200ms do relógio do TypingCore.
+// Sem isso, cada mensagem de progresso alheio reconstrói um <span> por caractere
+// na mesma main thread da textarea (área sagrada, HANDBOOK §2).
+export const CodeDisplay = memo(CodeDisplayImpl);
