@@ -46,18 +46,23 @@ const firstParam = (v: string | string[] | undefined): string | undefined =>
  * Um chip de filtro. É `<Link>` (navegação, não toggle), então o estado do
  * filtro fica na URL — compartilhável e no histórico do navegador — e a página
  * segue 100% servidor, sem JS novo. Ativo é marcado com `aria-current="page"`.
+ *
+ * A cor de marca da linguagem NÃO pinta o texto do chip: são hex de terceiros,
+ * nunca validados contra `--bg-card`, e 15 das 24 reprovam AA em `text-[11px]`
+ * (`lua #2c2d72` = 1.58:1, `elixir #4b275f` = 1.61:1 — ilegíveis). A sigla é o
+ * único portador da informação aqui, então ela usa o token do tema
+ * (`text-text-muted`, ~5:1) e a identidade da linguagem fica no `aria-label` —
+ * `docs/UI-AAA-OVERHAUL.md:108` regra (4) e §I.1.3.
  */
 function Chip({
   href,
   active,
   label,
-  color,
   children
 }: {
   href: string;
   active: boolean;
   label?: string;
-  color?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -70,7 +75,6 @@ function Chip({
           ? "border-neon-green/60 bg-neon-green/10 text-neon-green"
           : "border-bg-line text-text-muted hover:text-text hover:border-text-dim"
       }`}
-      style={!active && color ? { color } : undefined}
     >
       {children}
     </Link>
@@ -184,7 +188,6 @@ export default async function LeaderboardPage({
                       href={filtersToHref(filters, { lang: l.id })}
                       active={filters.lang === l.id}
                       label={l.label}
-                      color={l.color}
                     >
                       {l.icon}
                     </Chip>
