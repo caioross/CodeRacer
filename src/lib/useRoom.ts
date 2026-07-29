@@ -9,6 +9,7 @@ import {
   shouldFinishRace,
   isSpectatorJoin,
   pickVoteWinner,
+  reduceRoomSync,
   tallyVotes,
   isValidLang,
   RACE_DECISION_TICK_MS,
@@ -17,7 +18,8 @@ import {
   type PresenceMeta,
   type ProgressMsg,
   type ResultRow,
-  type RoomRow
+  type RoomRow,
+  type RoomSyncState
 } from "./room";
 import type { LangId } from "./languages";
 
@@ -74,7 +76,10 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   // uma única vez: resolvem o NOME da vítima e evitam anunciar o mesmo kick 2x.
   const presenceRef = useRef<Record<string, PresenceMeta>>({});
   const roomRef = useRef<RoomRow | null>(null);
-  const announcedKicksRef = useRef<Set<string>>(new Set());
+  // Memória do sync da sala (#109): carimbo da última linha aceita + expulsões
+  // já anunciadas. Vive num ref porque as duas fontes (broadcast e
+  // postgres_changes) escrevem nele fora do ciclo de render.
+  const roomSyncRef = useRef<RoomSyncState>({ stamp: null, announced: new Set<string>() });
   const onErrorRef = useRef(onError);
   const onLeaveRef = useRef(onLeave);
   onErrorRef.current = onError;
@@ -160,9 +165,12 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setRoom(seeded);
         lastStartRef.current = seeded.start_at;
         // Kicks já persistidos ao entrar são passado — não os anuncie como novos.
-        for (const k of Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : []) {
-          announcedKicksRef.current.add(k);
-        }
+        // O carimbo desta linha também entra: um evento anterior a ela que chegue
+        // atrasado por qualquer das duas fontes não desfaz o estado recém-lido.
+        roomSyncRef.current = {
+          stamp: seeded.updated_at ?? null,
+          announced: new Set(Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : [])
+        };
       } catch {
         if (cancelled) return;
         fail("Não foi possível carregar a sala");
@@ -245,38 +253,20 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setVotesMap(prev => ({ ...prev, [m.id as string]: m.language as LangId }));
       });
 
+      // Fonte 1 (#109): broadcast autoritativo que a API emite depois de cada
+      // mutação confirmada. Chega sem passar pelo `select` de `rooms`, então é
+      // o que sobrevive quando a leitura anônima for cortada (fatia 2 da #103).
+      channel.on("broadcast", { event: "room" }, ({ payload }) => {
+        applyRoomRow(payload as RoomRow);
+      });
+
+      // Fonte 2: a subscription original, MANTIDA ligada nesta fatia. As duas
+      // convivem; `applyRoomRow` dedupa por `updated_at`.
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
         payload => {
-          const next = payload.new as RoomRow;
-          if (!next || !next.code) return;
-          const kicks = Array.isArray(next.kicked_ids) ? next.kicked_ids : [];
-          // Expulsão com autoridade (#39): a saída só é definitiva quando o
-          // servidor registra meu id em `kicked_ids` — nunca por broadcast.
-          if (kicks.includes(id)) {
-            try {
-              sessionStorage.removeItem(SESSION_KEY(code));
-            } catch {}
-            fail("Você foi removido da sala pelo líder");
-            onLeaveRef.current?.();
-            return;
-          }
-          // Notifica TODA a sala (#66) sobre cada expulsão nova, resolvendo o
-          // nome pela presence do momento (a vítima ainda não saiu do canal).
-          // Rider do mesmo update autoritativo — nenhum broadcast novo a confiar.
-          if (kicks.length === 0) {
-            announcedKicksRef.current.clear(); // `reset` zerou os kicks
-          } else {
-            for (const kid of kicks) {
-              if (announcedKicksRef.current.has(kid)) continue;
-              announcedKicksRef.current.add(kid);
-              const nome = presenceRef.current[kid]?.name;
-              if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
-            }
-          }
-          roomRef.current = next;
-          setRoom(next);
+          applyRoomRow(payload.new as RoomRow);
         }
       );
 
@@ -287,11 +277,58 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           myMetaRef.current = meta;
           channel.track(meta);
           setPhase("ready");
+          // Broadcast é at-most-once e sem replay: o que aconteceu entre o
+          // `fetch` de seed e este instante não é reentregue por ninguém.
+          // Um resync fecha essa janela (o dedupe torna isto inerte quando
+          // nada mudou).
+          void resyncRoom();
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           fail("Conexão em tempo real falhou");
         }
       });
     })();
+
+    /**
+     * Aplica uma linha de sala vinda de QUALQUER das duas fontes. A decisão —
+     * dedupe por `updated_at`, minha expulsão, o que anunciar — é pura
+     * (`reduceRoomSync`, testada em room.test.ts); aqui ficam só os efeitos.
+     */
+    function applyRoomRow(next: RoomRow | null | undefined) {
+      const d = reduceRoomSync(roomSyncRef.current, next, id);
+      roomSyncRef.current = d.state;
+      // Expulsão com autoridade (#39): a saída só é definitiva quando o
+      // servidor registra meu id em `kicked_ids` — nunca por um broadcast de
+      // outro jogador. O broadcast novo é do SERVIDOR e carrega a mesma linha.
+      if (d.kickedMe) {
+        try {
+          sessionStorage.removeItem(SESSION_KEY(code));
+        } catch {}
+        fail("Você foi removido da sala pelo líder");
+        onLeaveRef.current?.();
+        return;
+      }
+      if (!d.apply || !next) return;
+      // Notifica TODA a sala (#66) sobre cada expulsão nova, resolvendo o nome
+      // pela presence do momento (a vítima ainda não saiu do canal).
+      for (const kid of d.announce) {
+        const nome = presenceRef.current[kid]?.name;
+        if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
+      }
+      roomRef.current = next;
+      setRoom(next);
+    }
+
+    /** Relê a linha da sala pela API (server-side) e a passa pelo mesmo funil. */
+    async function resyncRoom() {
+      try {
+        const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled || !json?.ok || !json.room) return;
+        applyRoomRow(json.room as RoomRow);
+      } catch {
+        // Resync é oportunista: as duas fontes ao vivo continuam de pé.
+      }
+    }
 
     function pushSystem(text: string) {
       setChat(prev => [

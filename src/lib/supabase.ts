@@ -6,16 +6,70 @@ import { MAX_PLAUSIBLE_WPM } from "./room";
 
 let client: SupabaseClient | null = null;
 
-export function getServerSupabase(): SupabaseClient | null {
-  if (client) return client;
+/** Credenciais do lado servidor — nunca saem daqui (nem para o bundle do cliente). */
+function serverCredentials(): { url: string; key: string } | null {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
-  client = createClient(url, key, { auth: { persistSession: false } });
+  return { url, key };
+}
+
+export function getServerSupabase(): SupabaseClient | null {
+  if (client) return client;
+  const cred = serverCredentials();
+  if (!cred) return null;
+  client = createClient(cred.url, cred.key, { auth: { persistSession: false } });
   return client;
+}
+
+/** Teto de espera do broadcast: a mutação já foi confirmada, ninguém espera por isto. */
+const BROADCAST_TIMEOUT_MS = 3000;
+
+/**
+ * Emite um evento de broadcast Realtime a partir do servidor, pelo endpoint REST
+ * (`POST /realtime/v1/api/broadcast`) — o mesmo caminho que o `supabase-js` usa
+ * quando não há websocket. A rota de API é serverless e efêmera: abrir canal e
+ * socket para publicar UMA mensagem custaria handshake, o `unsubscribe` teria de
+ * ser aguardado no caminho quente da resposta, e cada código de sala deixaria um
+ * canal registrado no cliente singleton. Um POST não deixa nada para trás.
+ *
+ * **Best-effort por construção** (#109): quem chama já confirmou a escrita no
+ * banco. Se isto falhar, o estado continua chegando ao cliente pelo
+ * `postgres_changes` — por isso devolve `boolean` em vez de lançar.
+ */
+export async function broadcastRealtime(
+  topic: string,
+  event: string,
+  payload: unknown
+): Promise<boolean> {
+  const cred = serverCredentials();
+  if (!cred) return false;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), BROADCAST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${cred.url.replace(/\/+$/, "")}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      headers: {
+        apikey: cred.key,
+        authorization: `Bearer ${cred.key}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ messages: [{ topic, event, payload }] }),
+      signal: ctrl.signal,
+      cache: "no-store"
+    });
+    if (!res.ok) console.warn("[realtime:broadcast]", topic, event, res.status);
+    return res.ok;
+  } catch (e) {
+    // Chave/URL ausentes, rede, ou o timeout acima — nunca derruba a mutação.
+    console.warn("[realtime:broadcast]", topic, event, (e as Error).message);
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export type LeaderRow = {

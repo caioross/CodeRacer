@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getServerSupabase } from "@/lib/supabase";
+import { broadcastRealtime, getServerSupabase } from "@/lib/supabase";
 import { pickSnippet } from "@/lib/snippets";
 import {
   COUNTDOWN_MS,
@@ -23,25 +23,48 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Escreve na sala e só devolve `null` quando a escrita foi CONFIRMADA (#56).
- * Qualquer outro caso vira a `NextResponse` de erro que a action deve retornar —
- * o `.select("code")` cobre de uma vez o erro do PostgREST e o "0 linhas
+ * Escreve na sala e só devolve a linha nova quando a escrita foi CONFIRMADA
+ * (#56). Qualquer outro caso vira a `NextResponse` de erro que a action deve
+ * retornar — o `select` cobre de uma vez o erro do PostgREST e o "0 linhas
  * afetadas" (sala apagada entre o SELECT da linha 44 e este UPDATE).
  * A decisão mora em `roomUpdateOutcome` (pura, testada); aqui só há I/O.
+ *
+ * O `select("*")` (antes `select("code")`) devolve a linha inteira para o
+ * broadcast autoritativo do #109: é exatamente a mesma linha que o
+ * `postgres_changes` já entrega a todo assinante, então não expõe nada novo.
  */
 async function applyRoomUpdate(
   sb: SupabaseClient,
   code: string,
   action: string,
   patch: Record<string, unknown>
-): Promise<NextResponse | null> {
-  const { data, error } = await sb.from("rooms").update(patch).eq("code", code).select("code");
+): Promise<{ failed: NextResponse; row?: undefined } | { failed?: undefined; row: RoomRow }> {
+  const { data, error } = await sb.from("rooms").update(patch).eq("code", code).select("*");
   const outcome = roomUpdateOutcome({ error, rows: data?.length });
-  if (outcome.ok) return null;
-  // Detalhe do banco fica no servidor; o cliente recebe copy neutra.
-  if (error) console.error("[rooms:update]", action, error.message);
-  else console.warn("[rooms:update]", action, "0 linhas confirmadas");
-  return NextResponse.json({ ok: false, error: outcome.error }, { status: outcome.status });
+  if (!outcome.ok) {
+    // Detalhe do banco fica no servidor; o cliente recebe copy neutra.
+    if (error) console.error("[rooms:update]", action, error.message);
+    else console.warn("[rooms:update]", action, "0 linhas confirmadas");
+    return {
+      failed: NextResponse.json({ ok: false, error: outcome.error }, { status: outcome.status })
+    };
+  }
+  return { row: (data as RoomRow[])[0] };
+}
+
+/**
+ * Publica a linha nova da sala no canal que os membros JÁ assinam
+ * (`coderacer:room:<CODE>`, ver `useRoom.ts`), como fonte autoritativa em
+ * paralelo ao `postgres_changes` (#109, fatia 1 da #103).
+ *
+ * Sempre DEPOIS de o `update` ter sido confirmado — nunca antes, nunca em
+ * paralelo: um broadcast que se adiantasse a uma escrita que falhou espalharia
+ * estado que não existe no banco. Falhar aqui é inofensivo: o cliente dedupa as
+ * duas fontes por `updated_at` e continua recebendo tudo pelo `postgres_changes`.
+ */
+async function broadcastRoom(code: string, row: RoomRow | null | undefined): Promise<void> {
+  if (!row) return;
+  await broadcastRealtime(`coderacer:room:${code}`, "room", row);
 }
 
 // GET /api/rooms/[code] → current room row.
@@ -100,12 +123,13 @@ export async function POST(req: Request, { params }: { params: { code: string } 
           { status: 400 }
         );
       }
-      const failed = await applyRoomUpdate(sb, code, "settings", {
+      const res = await applyRoomUpdate(sb, code, "settings", {
         language: lang.value,
         difficulty: difficulty.value,
         max_players: Math.min(Math.max(Number(s.maxPlayers) || room.max_players, 2), ABSOLUTE_MAX_PLAYERS)
       });
-      if (failed) return failed;
+      if (res.failed) return res.failed;
+      await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
     }
 
@@ -113,13 +137,14 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       if (!isLeader) return leaderOnly();
       const snippet = pickSnippet(room.language, room.difficulty);
       const startAt = new Date(Date.now() + COUNTDOWN_MS).toISOString();
-      const failed = await applyRoomUpdate(sb, code, "start", {
+      const res = await applyRoomUpdate(sb, code, "start", {
         status: "racing",
         snippet,
         start_at: startAt,
         results: null
       });
-      if (failed) return failed;
+      if (res.failed) return res.failed;
+      await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
     }
 
@@ -133,7 +158,7 @@ export async function POST(req: Request, { params }: { params: { code: string } 
         .update({ status: "finished", results })
         .eq("code", code)
         .eq("status", "racing")
-        .select("code");
+        .select("*");
       // Aqui `applyRoomUpdate` NÃO serve: zero linhas é o caminho feliz da
       // corrida com vários clientes ("outro já finalizou") e continua `ok: true`
       // sem repersistir. Só o `error` — que era descartado — vira falha honesta.
@@ -144,7 +169,12 @@ export async function POST(req: Request, { params }: { params: { code: string } 
           { status: 500 }
         );
       }
-      if (flipped && flipped.length) await persistMatch(sb, room as RoomRow, results);
+      // Só o primeiro `finish` flipa a linha — e só ele anuncia. Zero linhas
+      // significa "outro cliente já encerrou", e esse já emitiu o broadcast.
+      if (flipped && flipped.length) {
+        await broadcastRoom(code, (flipped as RoomRow[])[0]);
+        await persistMatch(sb, room as RoomRow, results);
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -173,15 +203,17 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       const kicked = addKickedId(room.kicked_ids, targetId); // idempotente e com teto
       // Falha alto: enquanto a migração 0005 não for aplicada a coluna não existe,
       // e um `ok: true` silencioso faria o líder crer que expulsou alguém.
-      const { error: kickErr } = await sb
+      const { data: kickedRows, error: kickErr } = await sb
         .from("rooms")
         .update({ kicked_ids: kicked })
-        .eq("code", code);
+        .eq("code", code)
+        .select("*");
       if (kickErr)
         return NextResponse.json(
           { ok: false, error: "Expulsão indisponível — migração pendente" },
           { status: 503 }
         );
+      await broadcastRoom(code, (kickedRows as RoomRow[] | null)?.[0]);
       return NextResponse.json({ ok: true });
     }
 
@@ -197,13 +229,16 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
       // O reset em si, ao contrário da limpeza acima, precisa ser confirmado:
       // "jogar de novo" que falha em silêncio deixa a sala presa em `finished`.
-      const failed = await applyRoomUpdate(sb, code, "reset", {
+      const res = await applyRoomUpdate(sb, code, "reset", {
         status: "lobby",
         snippet: null,
         start_at: null,
         results: null
       });
-      if (failed) return failed;
+      if (res.failed) return res.failed;
+      // A limpeza de `kicked_ids` acima não é anunciada por si: esta linha já
+      // vem depois dela e carrega a lista zerada junto com o lobby.
+      await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
     }
 
@@ -212,8 +247,9 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // The client only claims when it has detected the current leader left.
       // Este PR não muda a semântica de autorização (segue aberta, ver #6/PR #12):
       // só passa a reportar a falha de escrita em vez de fingir sucesso.
-      const failed = await applyRoomUpdate(sb, code, "claim-leader", { leader_id: playerId });
-      if (failed) return failed;
+      const res = await applyRoomUpdate(sb, code, "claim-leader", { leader_id: playerId });
+      if (res.failed) return res.failed;
+      await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
     }
 

@@ -16,8 +16,11 @@ import {
   RACE_TIMEOUT_MAX_MS,
   tallyVotes,
   pickVoteWinner,
+  isNewerRoomState,
+  reduceRoomSync,
   type ResultRow,
-  type RoomRow
+  type RoomRow,
+  type RoomSyncState
 } from "./room";
 
 // Fronteira anti-cheat do leaderboard: a engine é client-side, então a API roda
@@ -554,5 +557,138 @@ describe("roomUpdateOutcome", () => {
   it("nunca emite ok sem evidência de escrita (AC da #56)", () => {
     const semEvidencia = [{ rows: 0 }, { rows: null }, { error: { message: "x" }, rows: 1 }];
     for (const res of semEvidencia) expect(roomUpdateOutcome(res).ok).toBe(false);
+  });
+});
+
+// ─── Sync da sala com duas fontes (#109, fatia 1 da #103) ─────────────────────
+// A linha da sala passou a chegar pelo broadcast autoritativo da API E pelo
+// `postgres_changes`, ligados ao mesmo tempo. `reduceRoomSync` é o funil por
+// onde as duas passam: sem ele, o mesmo estado seria aplicado duas vezes e o
+// aviso de expulsão apareceria duplicado no chat de todo mundo.
+
+const ROW = (over: Partial<RoomRow> = {}): RoomRow =>
+  ({
+    code: "ABC123",
+    status: "lobby",
+    language: "javascript",
+    difficulty: "medium",
+    max_players: 6,
+    is_public: false,
+    leader_id: "lider",
+    snippet: null,
+    start_at: null,
+    results: null,
+    kicked_ids: [],
+    created_at: "2026-07-29T12:00:00.000Z",
+    updated_at: "2026-07-29T12:00:00.000Z",
+    ...over
+  }) as RoomRow;
+
+const VAZIO: RoomSyncState = { stamp: null, announced: new Set<string>() };
+
+describe("isNewerRoomState", () => {
+  it("primeira linha (nada processado) é sempre nova", () => {
+    expect(isNewerRoomState(null, "2026-07-29T12:00:00.000Z")).toBe(true);
+  });
+
+  it("carimbo igual → não é novo (a segunda fonte trouxe o MESMO estado)", () => {
+    expect(isNewerRoomState("2026-07-29T12:00:00.000Z", "2026-07-29T12:00:00.000Z")).toBe(false);
+  });
+
+  it("carimbo anterior → não é novo (entrega fora de ordem entre as fontes)", () => {
+    expect(isNewerRoomState("2026-07-29T12:00:05.000Z", "2026-07-29T12:00:00.000Z")).toBe(false);
+  });
+
+  it("carimbo posterior → novo", () => {
+    expect(isNewerRoomState("2026-07-29T12:00:00.000Z", "2026-07-29T12:00:00.001Z")).toBe(true);
+  });
+
+  it("formatos diferentes das duas fontes comparam pelo instante, não pelo texto", () => {
+    // PostgREST e o servidor de Realtime podem renderizar o mesmo instante com
+    // offset/precisão diferentes; comparação textual erraria.
+    expect(isNewerRoomState("2026-07-29T12:00:00+00:00", "2026-07-29T12:00:00.000Z")).toBe(false);
+    expect(isNewerRoomState("2026-07-29T12:00:00+00:00", "2026-07-29T12:00:01.000Z")).toBe(true);
+  });
+
+  it("carimbo ilegível → fail-open (melhor processar 2x que congelar a sala)", () => {
+    for (const ruim of [undefined, null, "", "ontem", 42, {}]) {
+      expect(isNewerRoomState("2026-07-29T12:00:00.000Z", ruim)).toBe(true);
+    }
+  });
+});
+
+describe("reduceRoomSync", () => {
+  it("aplica a primeira linha e guarda o carimbo", () => {
+    const d = reduceRoomSync(VAZIO, ROW({ status: "racing" }), "eu");
+    expect(d.apply).toBe(true);
+    expect(d.state.stamp).toBe("2026-07-29T12:00:00.000Z");
+  });
+
+  it("o MESMO estado pelas duas fontes é aplicado uma vez só", () => {
+    const linha = ROW({ status: "racing" });
+    const primeira = reduceRoomSync(VAZIO, linha, "eu"); // broadcast
+    const segunda = reduceRoomSync(primeira.state, linha, "eu"); // postgres_changes
+    expect(primeira.apply).toBe(true);
+    expect(segunda.apply).toBe(false);
+  });
+
+  it("NÃO duplica o aviso de expulsão quando a linha chega pelas duas fontes", () => {
+    const kick = ROW({ kicked_ids: ["vitima"], updated_at: "2026-07-29T12:00:01.000Z" });
+    const anuncios: string[] = [];
+    let st = VAZIO;
+    for (const fonte of [kick, kick]) {
+      const d = reduceRoomSync(st, fonte, "eu");
+      st = d.state;
+      anuncios.push(...d.announce);
+    }
+    expect(anuncios).toEqual(["vitima"]);
+  });
+
+  it("uma expulsão só é anunciada uma vez, mesmo em updates posteriores", () => {
+    // A lista `kicked_ids` é durável: ela reaparece em TODA linha seguinte.
+    const d1 = reduceRoomSync(VAZIO, ROW({ kicked_ids: ["a"], updated_at: "2026-07-29T12:00:01.000Z" }), "eu");
+    const d2 = reduceRoomSync(d1.state, ROW({ kicked_ids: ["a"], status: "racing", updated_at: "2026-07-29T12:00:02.000Z" }), "eu");
+    const d3 = reduceRoomSync(d2.state, ROW({ kicked_ids: ["a", "b"], status: "racing", updated_at: "2026-07-29T12:00:03.000Z" }), "eu");
+    expect(d1.announce).toEqual(["a"]);
+    expect(d2.announce).toEqual([]);
+    expect(d3.announce).toEqual(["b"]);
+  });
+
+  it("linha atrasada não reanuncia nem reverte o estado", () => {
+    const nova = reduceRoomSync(VAZIO, ROW({ kicked_ids: ["a"], status: "racing", updated_at: "2026-07-29T12:00:05.000Z" }), "eu");
+    const atrasada = reduceRoomSync(nova.state, ROW({ kicked_ids: [], updated_at: "2026-07-29T12:00:01.000Z" }), "eu");
+    expect(atrasada.apply).toBe(false);
+    expect(atrasada.announce).toEqual([]);
+    expect(atrasada.state.stamp).toBe("2026-07-29T12:00:05.000Z");
+  });
+
+  it("meu id em kicked_ids → saio da sala, sem anunciar nada para mim", () => {
+    const d = reduceRoomSync(VAZIO, ROW({ kicked_ids: ["eu"], updated_at: "2026-07-29T12:00:01.000Z" }), "eu");
+    expect(d.kickedMe).toBe(true);
+    expect(d.apply).toBe(false);
+    expect(d.announce).toEqual([]);
+  });
+
+  it("kicked_ids zerado pelo reset libera anúncios da próxima rodada", () => {
+    const d1 = reduceRoomSync(VAZIO, ROW({ kicked_ids: ["a"], updated_at: "2026-07-29T12:00:01.000Z" }), "eu");
+    const reset = reduceRoomSync(d1.state, ROW({ kicked_ids: [], updated_at: "2026-07-29T12:00:02.000Z" }), "eu");
+    const denovo = reduceRoomSync(reset.state, ROW({ kicked_ids: ["a"], updated_at: "2026-07-29T12:00:03.000Z" }), "eu");
+    expect(reset.apply).toBe(true);
+    expect(denovo.announce).toEqual(["a"]);
+  });
+
+  it("payload sem linha/`code` (broadcast malformado) é ignorado sem mexer no estado", () => {
+    const base = reduceRoomSync(VAZIO, ROW(), "eu").state;
+    for (const lixo of [null, undefined, {} as RoomRow, { code: "" } as RoomRow]) {
+      const d = reduceRoomSync(base, lixo, "eu");
+      expect(d.apply).toBe(false);
+      expect(d.state).toBe(base);
+    }
+  });
+
+  it("kicked_ids ausente (migração 0005 não aplicada) não quebra o sync", () => {
+    const d = reduceRoomSync(VAZIO, { ...ROW(), kicked_ids: undefined } as unknown as RoomRow, "eu");
+    expect(d.apply).toBe(true);
+    expect(d.announce).toEqual([]);
   });
 });
