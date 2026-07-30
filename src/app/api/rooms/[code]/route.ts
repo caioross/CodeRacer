@@ -29,9 +29,10 @@ export const dynamic = "force-dynamic";
  * afetadas" (sala apagada entre o SELECT da linha 44 e este UPDATE).
  * A decisão mora em `roomUpdateOutcome` (pura, testada); aqui só há I/O.
  *
- * O `select("*")` (antes `select("code")`) devolve a linha inteira para o
- * broadcast autoritativo do #109: é exatamente a mesma linha que o
- * `postgres_changes` já entrega a todo assinante, então não expõe nada novo.
+ * O `select("*")` (antes `select("code")`) devolve a linha confirmada porque o
+ * sinal do #109 precisa do `updated_at` recém-renovado pelo trigger. A linha
+ * não sai daqui: a resposta HTTP continua sendo `{ ok: true }` e o sinal leva
+ * só `code` + carimbo (ver `broadcastRoom`).
  */
 async function applyRoomUpdate(
   sb: SupabaseClient,
