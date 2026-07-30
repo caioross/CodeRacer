@@ -139,24 +139,31 @@ export function RaceTrack({
                       "repeating-linear-gradient(90deg, transparent 0, transparent 9%, rgba(255,255,255,0.06) 9%, rgba(255,255,255,0.06) 10%)"
                   }}
                 />
+                {/* #59 (fatia 2): a barra ocupa o trilho inteiro e encolhe por `scaleX`
+                    (origem à esquerda) em vez de animar `width` — o spring passa a rodar
+                    no compositor e não dispara layout/paint na main thread da textarea.
+                    O gradiente vive no espaço local do elemento, então acompanha a escala
+                    e o degradê visível continua indo de `${barColor}40` até `${barColor}`. */}
                 <motion.div
-                  className="h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
+                  className="h-full w-full origin-left rounded-full"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: pct / 100 }}
                   transition={{ type: "spring", stiffness: 120, damping: 22 }}
                   style={{
                     background: `linear-gradient(90deg, ${barColor}40, ${barColor})`,
                     boxShadow: abandoned ? "none" : `0 0 ${finished ? 16 : 12}px ${barColor}80`
                   }}
                 />
-                {/* racer marker */}
+                {/* racer marker — o wrapper cobre o trilho inteiro para que `x: "<pct>%"`
+                    (percentual da PRÓPRIA largura) equivalha ao antigo `left: <pct>%`; o
+                    -8px do `calc()` virou a margem negativa do ícone. Só `translateX`. */}
                 <motion.div
-                  className="absolute top-1/2 -translate-y-1/2"
-                  animate={{ left: `calc(${pct}% - 8px)` }}
+                  className="pointer-events-none absolute inset-y-0 left-0 w-full"
+                  animate={{ x: `${pct}%` }}
                   transition={{ type: "spring", stiffness: 120, damping: 22 }}
                 >
                   <div
-                    className="text-base leading-none select-none"
+                    className="absolute left-0 top-1/2 -ml-2 -translate-y-1/2 text-base leading-none select-none"
                     style={{
                       filter: abandoned ? "grayscale(1)" : `drop-shadow(0 0 6px ${barColor})`
                     }}
