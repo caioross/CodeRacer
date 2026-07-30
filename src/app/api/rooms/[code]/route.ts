@@ -53,18 +53,27 @@ async function applyRoomUpdate(
 }
 
 /**
- * Publica a linha nova da sala no canal que os membros JÁ assinam
- * (`coderacer:room:<CODE>`, ver `useRoom.ts`), como fonte autoritativa em
- * paralelo ao `postgres_changes` (#109, fatia 1 da #103).
+ * Avisa o canal que os membros JÁ assinam (`coderacer:room:<CODE>`, ver
+ * `useRoom.ts`) de que a linha da sala mudou (#109, fatia 1 da #103).
+ *
+ * O payload é só o SINAL — código e carimbo — e nunca o estado. Este canal é
+ * público: qualquer cliente com a anon key emite `event:"room"` nele, então
+ * estado que chegasse por aqui não teria autoridade alguma (é o que a migration
+ * 0005/#39 fechou: expulsão "nunca por broadcast"). Quem recebe relê a linha
+ * pela API server-side, que segue sendo a única fonte de verdade — e é ela que
+ * sobrevive quando a leitura anônima for cortada (fatia 2).
  *
  * Sempre DEPOIS de o `update` ter sido confirmado — nunca antes, nunca em
- * paralelo: um broadcast que se adiantasse a uma escrita que falhou espalharia
- * estado que não existe no banco. Falhar aqui é inofensivo: o cliente dedupa as
- * duas fontes por `updated_at` e continua recebendo tudo pelo `postgres_changes`.
+ * paralelo: um sinal que se adiantasse a uma escrita que falhou mandaria todo
+ * mundo reler um estado que não mudou. Falhar aqui é inofensivo: o
+ * `postgres_changes` continua entregando a linha.
  */
 async function broadcastRoom(code: string, row: RoomRow | null | undefined): Promise<void> {
   if (!row) return;
-  await broadcastRealtime(`coderacer:room:${code}`, "room", row);
+  await broadcastRealtime(`coderacer:room:${code}`, "room", {
+    code,
+    updated_at: row.updated_at
+  });
 }
 
 // GET /api/rooms/[code] → current room row.

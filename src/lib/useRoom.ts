@@ -27,6 +27,10 @@ const SESSION_KEY = (code: string) => `coderacer:room:${code}`;
 const NAME_KEY = "coderacer:name";
 const AVATAR_KEY = "coderacer:avatar";
 const PROGRESS_THROTTLE_MS = 120;
+// Teto de releituras da sala disparadas pelo sinal de broadcast (#109). Mutações
+// de sala são raras (settings/start/finish/kick/reset); o teto existe para o
+// caso hostil, não para o caminho normal.
+const RESYNC_MIN_INTERVAL_MS = 800;
 
 export type Phase = "need-name" | "connecting" | "ready" | "error";
 
@@ -77,8 +81,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   const presenceRef = useRef<Record<string, PresenceMeta>>({});
   const roomRef = useRef<RoomRow | null>(null);
   // Memória do sync da sala (#109): carimbo da última linha aceita + expulsões
-  // já anunciadas. Vive num ref porque as duas fontes (broadcast e
-  // postgres_changes) escrevem nele fora do ciclo de render.
+  // já anunciadas. Vive num ref porque as duas fontes de LINHA (postgres_changes
+  // e o resync server-side) escrevem nele fora do ciclo de render.
   const roomSyncRef = useRef<RoomSyncState>({ stamp: null, announced: new Set<string>() });
   const onErrorRef = useRef(onError);
   const onLeaveRef = useRef(onLeave);
@@ -148,6 +152,9 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     } catch {}
 
     let cancelled = false;
+    // Coalescência do resync disparado pelo sinal de broadcast (#109).
+    let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastResyncAt = 0;
 
     (async () => {
       // Seed durable state.
@@ -165,8 +172,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setRoom(seeded);
         lastStartRef.current = seeded.start_at;
         // Kicks já persistidos ao entrar são passado — não os anuncie como novos.
-        // O carimbo desta linha também entra: um evento anterior a ela que chegue
-        // atrasado por qualquer das duas fontes não desfaz o estado recém-lido.
+        // O carimbo desta linha também entra: uma linha anterior a ela que chegue
+        // atrasada por qualquer das fontes não desfaz o estado recém-lido.
         roomSyncRef.current = {
           stamp: seeded.updated_at ?? null,
           announced: new Set(Array.isArray(seeded.kicked_ids) ? seeded.kicked_ids : [])
@@ -253,15 +260,19 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         setVotesMap(prev => ({ ...prev, [m.id as string]: m.language as LangId }));
       });
 
-      // Fonte 1 (#109): broadcast autoritativo que a API emite depois de cada
-      // mutação confirmada. Chega sem passar pelo `select` de `rooms`, então é
-      // o que sobrevive quando a leitura anônima for cortada (fatia 2 da #103).
-      channel.on("broadcast", { event: "room" }, ({ payload }) => {
-        applyRoomRow(payload as RoomRow);
+      // Fonte 1 (#109): o SINAL que a API emite depois de cada mutação
+      // confirmada. O payload é deliberadamente ignorado — este canal é público
+      // e qualquer cliente com a anon key emite `event:"room"` nele, então uma
+      // linha vinda daqui não tem autoridade nenhuma (é exatamente o que a
+      // migration 0005/#39 fechou: expulsão "nunca por broadcast"). O sinal só
+      // dispara uma releitura server-side, que é a fonte que sobrevive quando a
+      // leitura anônima for cortada (fatia 2 da #103).
+      channel.on("broadcast", { event: "room" }, () => {
+        scheduleResync();
       });
 
-      // Fonte 2: a subscription original, MANTIDA ligada nesta fatia. As duas
-      // convivem; `applyRoomRow` dedupa por `updated_at`.
+      // Fonte 2: a subscription original, MANTIDA ligada nesta fatia. Ela e o
+      // resync caem no mesmo `applyRoomRow`, que dedupa por `updated_at`.
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `code=eq.${code}` },
@@ -298,7 +309,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       roomSyncRef.current = d.state;
       // Expulsão com autoridade (#39): a saída só é definitiva quando o
       // servidor registra meu id em `kicked_ids` — nunca por um broadcast de
-      // outro jogador. O broadcast novo é do SERVIDOR e carrega a mesma linha.
+      // outro jogador. Por isso esta função só é chamada com linha vinda do
+      // `postgres_changes` ou da API, jamais com o payload do canal.
       if (d.kickedMe) {
         try {
           sessionStorage.removeItem(SESSION_KEY(code));
@@ -318,8 +330,25 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       setRoom(next);
     }
 
+    /**
+     * Agenda uma releitura, coalescendo rajadas. O gatilho vem de um canal
+     * público: sem teto, um cliente hostil transformaria um flood de mensagens
+     * (barato) num flood de GETs à API vezes o número de membros da sala.
+     * Com o teto, o custo por cliente é o mesmo de chamar a rota direto.
+     */
+    function scheduleResync() {
+      if (cancelled || resyncTimer) return;
+      const wait = Math.max(0, RESYNC_MIN_INTERVAL_MS - (Date.now() - lastResyncAt));
+      resyncTimer = setTimeout(() => {
+        resyncTimer = null;
+        void resyncRoom();
+      }, wait);
+    }
+
     /** Relê a linha da sala pela API (server-side) e a passa pelo mesmo funil. */
     async function resyncRoom() {
+      if (cancelled) return;
+      lastResyncAt = Date.now();
       try {
         const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
@@ -339,6 +368,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
 
     return () => {
       cancelled = true;
+      if (resyncTimer) clearTimeout(resyncTimer);
       const ch = channelRef.current;
       channelRef.current = null;
       connectedRef.current = false;
