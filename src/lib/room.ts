@@ -473,6 +473,95 @@ export function kickedListFull(current: string[] | null | undefined): boolean {
   return base.length >= MAX_KICKED;
 }
 
+// ─── Sync da linha da sala com DUAS fontes (#109) ─────────────────────────────
+// A linha durável passou a chegar por dois caminhos: o broadcast autoritativo
+// que a API emite depois de cada mutação confirmada e a subscription
+// `postgres_changes` (mantida ligada nesta fatia — desligá-la no mesmo deploy
+// congelaria toda sala viva). O mesmo estado chega, portanto, DUAS vezes, e
+// reprocessá-lo tem efeito colateral visível: cada expulsão nova vira mensagem
+// no chat, e o aviso duplicado é o sintoma clássico. O relógio da sala é
+// `updated_at` — o trigger `rooms_touch` (0002) o renova a cada UPDATE, então
+// ele ordena os estados independentemente de qual fonte chegou primeiro.
+
+/**
+ * `true` quando `nextStamp` traz estado mais NOVO que o já processado. Estado
+ * igual (a segunda cópia da mesma mutação) ou anterior (entrega fora de ordem
+ * entre as duas fontes) é descartado.
+ *
+ * Fail-open deliberado: carimbo ausente ou ilegível de qualquer um dos lados faz
+ * a linha ser processada. Processar duas vezes é um incômodo contornável;
+ * ignorar a única cópia de um `start` prenderia a sala no lobby — e a corrida é
+ * a área sagrada do produto.
+ */
+export function isNewerRoomState(processedStamp: unknown, nextStamp: unknown): boolean {
+  const next = typeof nextStamp === "string" ? Date.parse(nextStamp) : NaN;
+  if (!Number.isFinite(next)) return true;
+  const prev = typeof processedStamp === "string" ? Date.parse(processedStamp) : NaN;
+  if (!Number.isFinite(prev)) return true; // nada processado ainda
+  return next > prev;
+}
+
+/** O que o cliente precisa lembrar entre dois eventos de sala. */
+export interface RoomSyncState {
+  /** `updated_at` da última linha aceita. */
+  stamp: string | null;
+  /** Ids de expulsão já anunciados no chat nesta sessão. */
+  announced: ReadonlySet<string>;
+}
+
+/** Decisão de sync: o que aplicar e o que anunciar. Nenhum efeito colateral. */
+export interface RoomSyncDecision {
+  /** Aplicar esta linha como o novo estado da sala? */
+  apply: boolean;
+  /** Fui EU o expulso? (saio da sala; nada é anunciado no meu chat.) */
+  kickedMe: boolean;
+  /** Expulsões ainda não anunciadas, na ordem da lista da sala. */
+  announce: string[];
+  /** Estado a guardar para o próximo evento. */
+  state: RoomSyncState;
+}
+
+/**
+ * Núcleo puro do handler de sala do `useRoom`: dedupe entre as duas fontes,
+ * detecção da minha própria expulsão e quais expulsões ainda não foram
+ * anunciadas. Chamado com a linha vinda do broadcast OU do `postgres_changes` —
+ * as duas passam pelo mesmo caminho, então o mesmo estado nunca é aplicado (nem
+ * anunciado) duas vezes.
+ *
+ * Expulsão continua sendo autoridade do servidor (#39): a saída só é definitiva
+ * quando a linha da sala traz meu id em `kicked_ids`. `kicked_ids` vazio (efeito
+ * do `reset`) limpa a memória de anúncios, para que a próxima rodada anuncie de
+ * novo quem for expulso de novo.
+ */
+export function reduceRoomSync(
+  state: RoomSyncState,
+  next: RoomRow | null | undefined,
+  meId: string
+): RoomSyncDecision {
+  const keep: RoomSyncDecision = { apply: false, kickedMe: false, announce: [], state };
+  if (!next || !next.code) return keep;
+  if (!isNewerRoomState(state.stamp, next.updated_at)) return keep;
+
+  const stamp = typeof next.updated_at === "string" ? next.updated_at : state.stamp;
+  const kicks = Array.isArray(next.kicked_ids) ? next.kicked_ids : [];
+
+  if (meId && kicks.includes(meId)) {
+    return { apply: false, kickedMe: true, announce: [], state: { stamp, announced: state.announced } };
+  }
+  if (kicks.length === 0) {
+    return { apply: true, kickedMe: false, announce: [], state: { stamp, announced: new Set() } };
+  }
+
+  const announced = new Set(state.announced);
+  const announce: string[] = [];
+  for (const kid of kicks) {
+    if (announced.has(kid)) continue;
+    announced.add(kid);
+    announce.push(kid);
+  }
+  return { apply: true, kickedMe: false, announce, state: { stamp, announced } };
+}
+
 const PLAYER_COLORS = [
   "#00ff88",
   "#00e5ff",
