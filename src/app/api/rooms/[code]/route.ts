@@ -145,7 +145,11 @@ export async function POST(req: Request, { params }: { params: { code: string } 
 
     case "start": {
       if (!isLeader) return leaderOnly();
-      const snippet = pickSnippet(room.language, room.difficulty);
+      // `room` veio do SELECT lá em cima, ANTES de qualquer update: `room.snippet`
+      // ainda é o da partida anterior (o `reset` deixa de zerá-lo, ver case
+      // "reset"). Excluí-lo do sorteio impede que a revanche caia no mesmo código
+      // (#115). Primeira partida da sala → `undefined` → sorteio normal.
+      const snippet = pickSnippet(room.language, room.difficulty, room.snippet?.title);
       const startAt = new Date(Date.now() + COUNTDOWN_MS).toISOString();
       const res = await applyRoomUpdate(sb, code, "start", {
         status: "racing",
@@ -239,9 +243,14 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
       // O reset em si, ao contrário da limpeza acima, precisa ser confirmado:
       // "jogar de novo" que falha em silêncio deixa a sala presa em `finished`.
+      // `snippet` NÃO é zerado de propósito (#115): é a única memória de qual
+      // código a sala acabou de correr, e o `start` a lê para não sortear o mesmo
+      // de novo na revanche. Não vaza nada — esse snippet já foi entregue a todos
+      // os jogadores na corrida que terminou — e o `start` o sobrescreve antes do
+      // countdown, então ninguém antecipa o próximo alvo. Nenhuma tela deriva
+      // fase de `snippet == null` (RoomView/Race/useRoom decidem por `status`).
       const res = await applyRoomUpdate(sb, code, "reset", {
         status: "lobby",
-        snippet: null,
         start_at: null,
         results: null
       });

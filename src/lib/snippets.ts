@@ -9,7 +9,10 @@ export interface SnippetSeed {
 
 type Pool = Record<string, Partial<Record<Difficulty, SnippetSeed[]>>>;
 
-const SNIPPETS: Pool = {
+// Exportado para os testes (`snippets.test.ts` versiona os invariantes do pool:
+// 72 buckets populados, títulos únicos por bucket). Nenhum componente de cliente
+// importa este módulo — os snippets continuam saindo só pelas rotas de API.
+export const SNIPPETS: Pool = {
 javascript: {
     easy: [
       { title: "Soma de array", code: `function soma(numeros) {
@@ -3665,12 +3668,56 @@ export interface PickedSnippet {
   difficulty: Difficulty;
 }
 
-export function pickSnippet(language: string, difficulty: string): PickedSnippet {
+/**
+ * Escolhe o bucket de onde sortear: a dificuldade pedida, depois medium/easy da
+ * mesma linguagem, depois a mesma cadeia em javascript.
+ *
+ * A seleção é por `.length`, não por truthiness: `[]` é *truthy*, então a cadeia
+ * de `||` anterior atravessava um bucket presente-porém-vazio e devolvia
+ * `undefined` do sorteio — `TypeError` em `choice.title`. Nenhum bucket real está
+ * vazio hoje (`snippets.test.ts` versiona os 72 como invariante), mas o caminho
+ * existia.
+ */
+function resolvePool(lang: string, diff: Difficulty): SnippetSeed[] {
+  for (const bucket of [SNIPPETS[lang], SNIPPETS.javascript]) {
+    if (!bucket) continue;
+    const pool = [bucket[diff], bucket.medium, bucket.easy].find(p => p?.length);
+    if (pool) return pool;
+  }
+  return [];
+}
+
+/**
+ * Sorteia um snippet do pool server-side.
+ *
+ * `excludeTitle` (#115) tira da urna o título da corrida anterior da sala: a
+ * revanche é o loop de retenção do produto, e com buckets de 3–5 snippets o
+ * sorteio uniforme repetia o código recém-digitado em 20–33% das vezes — com o
+ * WPM já memorizado indo direto ao ranking global. A memória é de UMA partida:
+ * A→B→A continua possível, e é aceitável.
+ *
+ * O 3º parâmetro é opcional para o Treino Livre (`api/snippet/route.ts`) seguir
+ * chamando com dois argumentos.
+ */
+export function pickSnippet(
+  language: string,
+  difficulty: string,
+  excludeTitle?: string | null
+): PickedSnippet {
   const lang = normalizeLang(language) || "javascript";
   const diff = (["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium") as Difficulty;
-  const langBucket = SNIPPETS[lang] || SNIPPETS.javascript;
-  const pool = langBucket[diff] || langBucket.medium || langBucket.easy || [];
-  const choice = pool[Math.floor(Math.random() * pool.length)];
+  const pool = resolvePool(lang, diff);
+  if (!pool.length) {
+    // Inalcançável enquanto o invariante dos 72 buckets valer; explícito em vez
+    // de devolver `undefined` disfarçado de snippet.
+    throw new Error(`pickSnippet: nenhum snippet disponível para ${lang}/${diff}`);
+  }
+  // A exclusão é por título, e o eixo da degradação é o pool JÁ FILTRADO, não o
+  // tamanho do bucket: bucket de 1 — ou títulos repetidos dentro do bucket —
+  // esvaziaria o filtro. Nesses casos repete em vez de falhar.
+  const candidates = excludeTitle ? pool.filter(s => s.title !== excludeTitle) : pool;
+  const from = candidates.length ? candidates : pool;
+  const choice = from[Math.floor(Math.random() * from.length)];
   return {
     title: choice.title,
     code: choice.code,
