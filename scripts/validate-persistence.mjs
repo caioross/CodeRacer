@@ -63,6 +63,35 @@ function sanitizeResults(input, room) {
   return out;
 }
 
+// ─── Espelho de dropTemporallyImpossible() (src/lib/room.ts, issue #34) ───────
+// `sanitizeResults` limita o VALOR e é cega ao relógio: com o teto em 350, o
+// forjador pede 349 e entra no ranking sem digitar. A checagem temporal é um
+// PISO — digitar N chars a `wpm` custa `(N/5)/wpm` minutos, e isso tem de caber
+// no tempo decorrido: `wpm >= (N/5)/E`. Roda com folga porque o servidor só
+// enxerga caracteres DIGITADOS (`progress * chars`), um limite superior dos
+// corretos, que são o numerador real do WPM.
+
+const TIMING_SLACK = 0.65;
+const TIMING_EPS_WPM = 1;
+
+/** Espelho fiel de `dropTemporallyImpossible(rows, room, nowMs)` (sem o console.warn). */
+function dropTemporallyImpossible(rows, room, nowMs) {
+  const startMs = room?.start_at ? Date.parse(room.start_at) : NaN;
+  if (!Number.isFinite(startMs)) return [];
+  const chars = room?.snippet?.code?.length ?? 0;
+  const globalMin = Math.max(0, nowMs - startMs) / 60000;
+
+  return rows.filter(r => {
+    const typedChars = Math.max(0, Math.min(1, Number(r.progress) || 0)) * chars;
+    if (typedChars <= 0) return true;
+    const fa = Number(r.finishedAt);
+    const inWindow = Number.isFinite(fa) && fa >= startMs && fa <= nowMs;
+    const elapsedMin = inWindow ? (fa - startMs) / 60000 : globalMin;
+    const floor = elapsedMin > 0 ? typedChars / 5 / elapsedMin : Infinity;
+    return !(Number(r.wpm) + TIMING_EPS_WPM < floor * TIMING_SLACK);
+  });
+}
+
 // ─── Espelho da allowlist de settings (src/lib/room.ts) ───────────────────────
 // A fonte de verdade é `LANGUAGES`/`DIFFICULTIES` em src/lib/languages.ts. Este
 // espelho segue o padrão do arquivo (sem import de TS) — se as listas mudarem lá,
@@ -217,6 +246,76 @@ console.log("\n── Entradas degeneradas ────────────�
     sanitizeResults([legit(), null, legit({ id: 'p2', name: 'z' })], ROOM).length === 2);
   assert("linha não-objeto (string) → ignorada",
     sanitizeResults(['forjado', legit()], ROOM).length === 1);
+}
+
+// ─── Coerência temporal do finish (issue #34) ────────────────────────────────
+
+const RACE_START = Date.parse('2026-07-30T12:00:00.000Z');
+const TIMED_ROOM = {
+  start_at: new Date(RACE_START).toISOString(),
+  snippet: { title: 't', code: 'x'.repeat(300), language: 'javascript', difficulty: 'easy' }
+};
+/** Linha já sanitizada (o filtro roda depois de `sanitizeResults`). */
+const timed = (over = {}) => ({ ...legit({ finishedAt: null }), ...over });
+
+console.log("\n── Anti-cheat: coerência temporal do finish (#34) ───────────────");
+{
+  assert("ataque da issue: finish 200 ms após o start com wpm 349 → descartado",
+    dropTemporallyImpossible([timed({ wpm: 349 })], TIMED_ROOM, RACE_START + 200).length === 0);
+  assert("nada persistido quando todas as linhas caem (array vazio)",
+    dropTemporallyImpossible([timed({ wpm: 349 })], TIMED_ROOM, RACE_START + 200).length === 0);
+  assert("residual declarado: esperar ~11 s torna a claim consistente e ela passa",
+    dropTemporallyImpossible([timed({ wpm: 349 })], TIMED_ROOM, RACE_START + 11_000).length === 1);
+
+  // O falso-positivo que a folga existe para evitar: `wpm` sai de correctChars
+  // (297), o piso sai de typed (300) — sem TIMING_SLACK, 59 < 60 e o honesto cai.
+  assert("corrida honesta de 60 s com 3 erros não corrigidos (wpm 59) → preservada",
+    dropTemporallyImpossible([timed({ wpm: 59 })], TIMED_ROOM, RACE_START + 60_000).length === 1);
+  assert("jogador lento: 10 chars em 5 min, wpm 0 → preservado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 0, progress: 10 / 300, finished: false })], TIMED_ROOM, RACE_START + 300_000
+    ).length === 1);
+  assert("abandono com progress parcial → julgado pelo que digitou, preservado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 30, progress: 0.25, finished: false })], TIMED_ROOM, RACE_START + 30_000
+    ).length === 1);
+  assert("quem não digitou nada (progress 0) → passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: 0, progress: 0, finished: false })], TIMED_ROOM, RACE_START + 200
+    ).length === 1);
+
+  assert("finishedAt honesto APERTA o piso: terminou aos 200 ms, request aos 60 s → descartado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349, finishedAt: RACE_START + 200 })], TIMED_ROOM, RACE_START + 60_000
+    ).length === 0);
+  assert("finishedAt forjado no futuro não compra tempo (cai no relógio do servidor)",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349, finishedAt: RACE_START + 3_600_000 })], TIMED_ROOM, RACE_START + 200
+    ).length === 0);
+  assert("finishedAt antes do start (skew de relógio) não derruba o honesto",
+    dropTemporallyImpossible(
+      [timed({ wpm: 59, finishedAt: RACE_START - 30_000 })], TIMED_ROOM, RACE_START + 60_000
+    ).length === 1);
+
+  assert("sala racing sem start_at → descarta tudo (nunca 'passa tudo')",
+    dropTemporallyImpossible(
+      [timed(), timed({ name: 'z' })],
+      { start_at: null, snippet: TIMED_ROOM.snippet }, RACE_START + 60_000
+    ).length === 0);
+  assert("start_at inválido → descarta tudo",
+    dropTemporallyImpossible(
+      [timed()], { start_at: 'ontem', snippet: TIMED_ROOM.snippet }, RACE_START + 60_000
+    ).length === 0);
+  assert("sala sem snippet → sem alvo para medir, a linha passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349 })], { start_at: TIMED_ROOM.start_at, snippet: null }, RACE_START + 200
+    ).length === 1);
+  assert("descarta só a linha impossível, preserva a honesta do mesmo payload",
+    dropTemporallyImpossible(
+      [timed({ name: 'honesto', wpm: 59 }),
+       timed({ name: 'forjado', wpm: 349, finishedAt: RACE_START + 200 })],
+      TIMED_ROOM, RACE_START + 60_000
+    ).map(r => r.name).join() === 'honesto');
 }
 
 // ─── validateMatchInsert (linha na tabela `matches`) ──────────────────────────

@@ -338,6 +338,89 @@ export function sanitizeResults(
   return out;
 }
 
+// ─── Coerência temporal do `finish` (issue #34) ───────────────────────────────
+// `sanitizeResults` limita o VALOR (teto global de 350 WPM) mas é cega ao relógio:
+// um payload com `wpm: 349` 200 ms depois do `start` passa e entra no ranking sem
+// que uma tecla tenha sido digitada. O servidor tem como provar a impossibilidade
+// FÍSICA — ele conhece `start_at` e o tamanho do snippet.
+//
+// A inversão é um PISO, não um teto: digitar `N` caracteres a `wpm` custa
+// `t = (N/5)/wpm` minutos, e o tempo decorrido `E` impõe `t <= E`, ou seja
+// `wpm >= (N/5)/E`. Reportar POUCO WPM tendo digitado MUITO em POUCO tempo é o
+// que é impossível (um teto pegaria o caso oposto e deixaria o ataque passar —
+// foi o erro que derrubou a PR #36).
+//
+// O piso roda com um insumo IMPRECISO e por isso precisa de folga: o `wpm` do
+// cliente sai de `correctChars` (`metrics.ts:22`), enquanto tudo o que o servidor
+// pode derivar é `progress * chars` = caracteres DIGITADOS — um limite SUPERIOR
+// de `correctChars`. Sem folga, quem erra e não corrige (ou digita devagar) cai
+// abaixo do próprio piso e é descartado. Daí `TIMING_SLACK`/`TIMING_EPS_WPM`.
+
+/** Folga multiplicativa do piso temporal — cobre erros não corrigidos (o servidor
+ *  só enxerga caracteres digitados, não os corretos) e o arredondamento do WPM. */
+export const TIMING_SLACK = 0.65;
+/** Folga absoluta, em WPM — protege o jogador lento, onde o piso é fração de 1. */
+export const TIMING_EPS_WPM = 1;
+
+/**
+ * Descarta as linhas de `finish` que são temporalmente impossíveis: o jogador
+ * alega ter digitado mais caracteres do que caberia no tempo decorrido desde
+ * `start_at`. Puro e determinístico (`nowMs` entra por parâmetro).
+ *
+ * Regras, por linha:
+ * - `N = progress * snippet.code.length` (caracteres digitados). `N <= 0` → nada
+ *   a provar, a linha passa (inclui a sala sem `snippet`).
+ * - `E` = tempo decorrido desde `start_at`. Usa `finishedAt` do cliente quando ele
+ *   cai dentro de `[start_at, now]` — aí ele só APERTA o piso, porque o jogador
+ *   terminou antes do request. Fora dessa janela (forjado no futuro, ou relógio do
+ *   cliente defasado) cai no `E` global do servidor, que é a garantia mínima:
+ *   `finishedAt` nunca afrouxa o piso além de `now - start_at`.
+ * - Descarta só quando `wpm + TIMING_EPS_WPM < piso * TIMING_SLACK`.
+ * - `start_at` ausente/inválido → descarta tudo: numa sala `racing` isso é estado
+ *   impossível, e "passa tudo" seria justamente o buraco.
+ *
+ * Escopo honesto: isto prova impossibilidade, não honestidade. Quem espera o
+ * tempo mínimo (~11 s para 300 chars a 349 WPM) produz uma claim fisicamente
+ * consistente; o teto de valor continua sendo `MAX_PLAUSIBLE_WPM`. A fechadura
+ * de verdade é identidade/roster (#6).
+ *
+ * Coberto por `src/lib/room.test.ts` e `scripts/validate-persistence.mjs`.
+ */
+export function dropTemporallyImpossible(
+  rows: ResultRow[],
+  room: Pick<RoomRow, "start_at" | "snippet">,
+  nowMs: number
+): ResultRow[] {
+  const startMs = room?.start_at ? Date.parse(room.start_at) : NaN;
+  if (!Number.isFinite(startMs)) return []; // sala `racing` sem relógio → nada é provável
+  const chars = room?.snippet?.code?.length ?? 0;
+  const globalMin = Math.max(0, nowMs - startMs) / 60000;
+
+  return rows.filter(r => {
+    const typedChars = Math.max(0, Math.min(1, Number(r.progress) || 0)) * chars;
+    if (typedChars <= 0) return true; // não digitou nada: nenhum trabalho a justificar
+
+    const fa = Number(r.finishedAt);
+    const inWindow = Number.isFinite(fa) && fa >= startMs && fa <= nowMs;
+    const elapsedMin = inWindow ? (fa - startMs) / 60000 : globalMin;
+    // Tempo zero com caractere digitado é impossível por definição → piso infinito.
+    const floor = elapsedMin > 0 ? typedChars / 5 / elapsedMin : Infinity;
+
+    if (Number(r.wpm) + TIMING_EPS_WPM < floor * TIMING_SLACK) {
+      // Descarte é invisível na tela (o `finish` é do líder, não da vítima): o log
+      // do servidor é o único rastro de um falso-positivo. Ver lente UX do parecer.
+      console.warn("[finish:timing] linha descartada", {
+        name: r.name,
+        wpm: r.wpm,
+        piso: Math.round(floor),
+        elapsedMin: Number(elapsedMin.toFixed(4))
+      });
+      return false;
+    }
+    return true;
+  });
+}
+
 // ─── Montagem das linhas do leaderboard (matches/scores) ─────────────────────
 // A API só orquestra os `insert`; o mapeamento `results → linhas` vive aqui,
 // puro e determinístico, para ser coberto por teste (o `finished_at` entra como

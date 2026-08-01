@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   sanitizeResults,
+  dropTemporallyImpossible,
+  TIMING_SLACK,
+  TIMING_EPS_WPM,
   buildMatchRow,
   buildScoreRows,
   clampInt,
@@ -175,6 +178,167 @@ describe("sanitizeResults — entradas degeneradas", () => {
       ROOM
     );
     expect(out).toHaveLength(2);
+  });
+});
+
+// ─── Coerência temporal do finish (issue #34) ────────────────────────────────
+// `sanitizeResults` é cega ao relógio: com o teto global em 350, o forjador pede
+// 349 e entra no ranking sem digitar. Aqui vive o piso físico — e o que ele
+// precisa NÃO fazer: descartar jogador honesto. O insumo do servidor
+// (`progress * chars` = caracteres digitados) é limite superior de `correctChars`,
+// que é o numerador real do WPM; sem folga, quem erra ou digita devagar cai fora.
+
+const RACE_START = Date.parse("2026-07-30T12:00:00.000Z");
+/** Sala em `racing` com snippet de 300 caracteres. */
+const TIMED_ROOM = {
+  start_at: new Date(RACE_START).toISOString(),
+  snippet: { title: "t", code: "x".repeat(300), language: "javascript", difficulty: "easy" }
+} as unknown as RoomRow;
+
+/** Linha final já sanitizada (o filtro roda depois de `sanitizeResults`). */
+const row = (over: Partial<ResultRow> = {}): ResultRow => ({
+  id: "p1",
+  name: "caio",
+  color: "#00ff88",
+  wpm: 85,
+  accuracy: 97,
+  errors: 3,
+  progress: 1,
+  place: 1,
+  finished: true,
+  finishedAt: null,
+  ...over
+});
+
+describe("dropTemporallyImpossible — o ataque da issue #34", () => {
+  it("finish 200 ms depois do start com wpm 349 → descartado", () => {
+    // 300 chars em 0,2 s exigiriam 18.000 WPM; mesmo com folga o piso é 11.700.
+    const out = dropTemporallyImpossible([row({ wpm: 349 })], TIMED_ROOM, RACE_START + 200);
+    expect(out).toEqual([]);
+  });
+
+  it("o mesmo ataque com o tempo mínimo (~11 s) passa — residual declarado na issue", () => {
+    const out = dropTemporallyImpossible([row({ wpm: 349 })], TIMED_ROOM, RACE_START + 11_000);
+    expect(out).toHaveLength(1);
+  });
+
+  it("descarta só a linha impossível, preservando as honestas do mesmo payload", () => {
+    // Corrida de 60 s: o honesto (sem `finishedAt`) é medido pelo relógio do
+    // servidor; o forjado alega ter varrido os 300 chars em 200 ms.
+    const out = dropTemporallyImpossible(
+      [row({ name: "honesto", wpm: 59 }), row({ name: "forjado", wpm: 349, finishedAt: RACE_START + 200 })],
+      TIMED_ROOM,
+      RACE_START + 60_000
+    );
+    expect(out.map(r => r.name)).toEqual(["honesto"]);
+  });
+});
+
+describe("dropTemporallyImpossible — não descarta jogador honesto", () => {
+  it("corrida de 60 s com 3 erros não corrigidos (wpm 59 < piso cru 60) → preservada", () => {
+    // O caso que a folga existe para cobrir: `wpm` sai de correctChars (297),
+    // o piso sai de typed (300). Sem `TIMING_SLACK` esta linha seria descartada.
+    const out = dropTemporallyImpossible([row({ wpm: 59 })], TIMED_ROOM, RACE_START + 60_000);
+    expect(out).toHaveLength(1);
+  });
+
+  it("jogador lento/ocioso: 10 chars em 5 min, wpm 0 → preservado", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 0, progress: 10 / 300, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 300_000
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("abandono no meio (progress parcial) é julgado pelo que digitou", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 30, progress: 0.25, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 30_000
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("quem não digitou nada passa (nenhum trabalho a justificar)", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 0, progress: 0, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe("dropTemporallyImpossible — finishedAt do cliente nunca afrouxa o piso", () => {
+  it("finishedAt honesto aperta o piso: terminou aos 200 ms, request aos 60 s → descartado", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349, finishedAt: RACE_START + 200 })],
+      TIMED_ROOM,
+      RACE_START + 60_000
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("finishedAt forjado no futuro cai no relógio do servidor (não compra tempo)", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349, finishedAt: RACE_START + 3_600_000 })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("finishedAt antes do start (relógio do cliente defasado) não derruba o honesto", () => {
+    // Fora da janela [start, now] o piso volta ao E global do servidor — a mesma
+    // garantia mínima de quem não manda `finishedAt`, sem punir skew de relógio.
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 59, finishedAt: RACE_START - 30_000 })],
+      TIMED_ROOM,
+      RACE_START + 60_000
+    );
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe("dropTemporallyImpossible — sala em estado degenerado", () => {
+  it("start_at ausente numa sala racing → descarta tudo (nunca 'passa tudo')", () => {
+    const out = dropTemporallyImpossible(
+      [row(), row({ name: "z" })],
+      { start_at: null, snippet: TIMED_ROOM.snippet } as unknown as RoomRow,
+      RACE_START + 60_000
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("start_at inválido → descarta tudo", () => {
+    const out = dropTemporallyImpossible(
+      [row()],
+      { start_at: "ontem", snippet: TIMED_ROOM.snippet } as unknown as RoomRow,
+      RACE_START + 60_000
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("sala sem snippet → sem alvo para medir, a linha passa", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349 })],
+      { start_at: TIMED_ROOM.start_at, snippet: null } as unknown as RoomRow,
+      RACE_START + 200
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("array vazio → array vazio", () => {
+    expect(dropTemporallyImpossible([], TIMED_ROOM, RACE_START + 60_000)).toEqual([]);
+  });
+});
+
+describe("dropTemporallyImpossible — as folgas são constantes nomeadas", () => {
+  it("TIMING_SLACK e TIMING_EPS_WPM são exportadas e afrouxam, nunca apertam", () => {
+    expect(TIMING_SLACK).toBeGreaterThan(0);
+    expect(TIMING_SLACK).toBeLessThanOrEqual(1);
+    expect(TIMING_EPS_WPM).toBeGreaterThanOrEqual(0);
   });
 });
 
