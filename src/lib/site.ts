@@ -13,48 +13,74 @@ export type SiteUrlEnv = {
   /** Domínio de produção do projeto na Vercel (estável entre deploys). */
   NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL?: string;
   VERCEL_PROJECT_PRODUCTION_URL?: string;
-  /** Domínio do deploy corrente na Vercel (único por deploy — preview). */
-  NEXT_PUBLIC_VERCEL_URL?: string;
-  VERCEL_URL?: string;
+  /** `"1"` dentro de qualquer build da Vercel — lá não existe origem de dev. */
+  VERCEL?: string;
 };
 
-/** Último recurso: só vale em dev, quando nada mais revela a origem. */
+/** Último recurso: só vale FORA da Vercel (dev/CI), nunca num deploy. */
 const DEV_FALLBACK_URL = "http://localhost:3000";
+
+// `VERCEL_URL` (a URL única do deployment) foi deliberadamente deixada de fora
+// da cadeia: ela não é uma identidade pública. Medido no deploy de produção
+// deste projeto — `curl -I https://code-racer-<hash>-caiorossi-projects1.vercel.app/`
+// devolve `302` para o SSO da Vercel com `X-Robots-Tag: noindex`, e o valor muda
+// a cada deploy. Anunciá-la como canonical seria trocar um domínio errado por um
+// canonical privado, `noindex` e rotativo — pior que o bug que a #117 conserta.
 
 // As variáveis da Vercel chegam como hostname puro (`meu-app.vercel.app`), sem
 // protocolo; `NEXT_PUBLIC_SITE_URL` chega como URL absoluta. Aceitamos as duas
-// formas e devolvemos sempre origem absoluta sem barra final.
+// formas e devolvemos SEMPRE a origem reconstruída a partir do parse — nunca a
+// string crua. Reconstruir é o que descarta userinfo, query e fragmento e o que
+// percent-encoda `<`, `>`, CR/LF e NUL: `SITE.url` é interpolado verbatim no
+// `Host:` do robots.txt, no `<loc>` do sitemap e dentro do <script> do JSON-LD,
+// que não escapam nada.
 function normalizeOrigin(raw: string | undefined): string | null {
   const value = raw?.trim();
   if (!value) return null;
-  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  // Esquema explícito que não seja http(s) é recusado de saída — sem isto,
+  // `ftp://x.com` viraria `https://ftp://x.com` (host `ftp`).
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(value);
+  if (hasScheme && !/^https?:\/\//i.test(value)) return null;
+  const candidate = hasScheme ? value : `https://${value.replace(/^\/+/, "")}`;
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
     if (!parsed.hostname) return null;
+    // `origin` já é `protocolo//host[:porta]` sem credencial; o `pathname` cobre
+    // deploy em subcaminho. Query e fragmento não fazem parte de uma origem.
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
   } catch {
     return null;
   }
-  return candidate.replace(/\/+$/, "");
 }
 
 /**
  * Resolve a origem pública do site na ordem: override do dono → domínio de
- * produção do provedor → domínio do deploy corrente → fallback de dev.
+ * produção do provedor → fallback de dev (só fora da Vercel).
  *
  * Pura e exportada para teste (`site.test.ts`): o chamador injeta o ambiente.
+ *
+ * **Lança** quando roda dentro da Vercel sem nenhuma origem descoberta: um build
+ * quebrado é visível na hora e não sai do ar (a Vercel mantém o deploy anterior),
+ * enquanto um canonical `http://localhost:3000` publicado em silêncio manda o
+ * unfurler de todo convite bater no loopback de quem clicou.
  */
 export function resolveSiteUrl(env: SiteUrlEnv): string {
   const candidates = [
     env.NEXT_PUBLIC_SITE_URL,
     env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
-    env.VERCEL_PROJECT_PRODUCTION_URL,
-    env.NEXT_PUBLIC_VERCEL_URL,
-    env.VERCEL_URL
+    env.VERCEL_PROJECT_PRODUCTION_URL
   ];
   for (const candidate of candidates) {
     const origin = normalizeOrigin(candidate);
     if (origin) return origin;
+  }
+  if (env.VERCEL) {
+    throw new Error(
+      "[site] Origem pública indefinida num build da Vercel. Ligue as System " +
+        "Environment Variables do projeto (expõe VERCEL_PROJECT_PRODUCTION_URL) " +
+        "ou defina NEXT_PUBLIC_SITE_URL com a URL que serve o site."
+    );
   }
   return DEV_FALLBACK_URL;
 }
@@ -66,8 +92,7 @@ const RAW_URL = resolveSiteUrl({
   NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL:
     process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
   VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
-  NEXT_PUBLIC_VERCEL_URL: process.env.NEXT_PUBLIC_VERCEL_URL,
-  VERCEL_URL: process.env.VERCEL_URL
+  VERCEL: process.env.VERCEL
 });
 
 export const SITE = {
