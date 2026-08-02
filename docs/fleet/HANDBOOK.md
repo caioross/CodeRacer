@@ -64,8 +64,11 @@ Toda issue criada por agente tem: **1 prioridade + ≥1 área + acceptance crite
 
 ## §5 Reivindicação (claim)
 
-Issue **elegível** = aberta, sem `em-resolucao`/`blocked`/`epic`/`decisao-dono`, sem PR aberta
-vinculada e sem branch `auto/issue-<N>-*` remota. Claim = adicionar `em-resolucao` + criar
+Issue **elegível** = aberta, sem `em-resolucao`/`blocked`/`epic`/`decisao-dono` e sem PR aberta
+vinculada. Uma branch `auto/issue-<N>-*` remota **só** bloqueia se tiver **PR aberta vinculada**:
+o §8 proíbe apagar branch, então PR fechada sem merge deixaria a issue congelada para sempre
+(a #34, P1, foi top-1 por três rodadas e pulada duas vezes por causa disso). Branch órfã sem PR
+aberta = resíduo: **abra uma branch nova**, não repare a antiga. Claim = adicionar `em-resolucao` + criar
 branch `auto/issue-<N>-<slug>` a partir de `origin/main` (nunca do HEAD local). Ao abrir o PR,
 remova `em-resolucao` — o PR passa a ser a reivindicação.
 

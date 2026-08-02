@@ -23,8 +23,11 @@ Nada elegível/acionável → poste 1 linha no Diário de Bordo e encerre (silê
 ## 2. Claim de issue (3 checagens antes)
 
 Uma issue está livre se: (a) sem label `em-resolucao`/`blocked`/`epic`/`decisao-dono`;
-(b) sem branch remota `auto/issue-<N>-*` (`git ls-remote --heads origin 'auto/issue-<N>-*'`);
-(c) sem PR aberta que a referencie. Então:
+(b) sem PR aberta que a referencie (`gh pr list -R caioross/CodeRacer --state open --search '<N>'`);
+(c) se houver branch remota `auto/issue-<N>-*` (`git ls-remote --heads origin 'auto/issue-<N>-*'`),
+confira se ela tem PR **aberta**: `gh pr list -R caioross/CodeRacer --state all --head <branch>`.
+PR `CLOSED`/`MERGED` (ou nenhuma) → a branch é **resíduo**, a issue está livre — abra uma branch
+**nova** com outro slug, nunca repare a antiga (§8 proíbe apagá-la). Então:
 
 ```bash
 gh issue edit <N> -R caioross/CodeRacer --add-label em-resolucao
