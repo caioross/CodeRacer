@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   sanitizeResults,
+  dropTemporallyImpossible,
+  TIMING_EPS_MS,
   buildMatchRow,
   buildScoreRows,
   clampInt,
@@ -202,6 +204,217 @@ describe("sanitizeResults — entradas degeneradas", () => {
     expect(out).toHaveLength(2);
   });
 });
+
+// ─── Coerência temporal do finish (issue #34) ────────────────────────────────
+// `sanitizeResults` é cega ao relógio: com o teto global em 350, o forjador pede
+// 349 e entra no ranking sem digitar. Aqui vive o mínimo FÍSICO — concluir N
+// caracteres leva pelo menos `(N/5)/MAX_PLAUSIBLE_WPM` minutos. O piso não usa o
+// `wpm` reivindicado (era o defeito da 1ª versão, 3×VETA em 01/08): o honesto é
+// sempre mais LENTO que o mínimo físico, então falso-positivo não existe aqui.
+
+const RACE_START = Date.parse("2026-07-30T12:00:00.000Z");
+/** Sala em `racing` com snippet de 300 caracteres. */
+const TIMED_ROOM = {
+  start_at: new Date(RACE_START).toISOString(),
+  snippet: { title: "t", code: "x".repeat(300), language: "javascript", difficulty: "easy" }
+} as unknown as RoomRow;
+
+/** Mínimo físico para os 300 chars do snippet de teste: 10.285,7 ms. */
+const MIN_MS_300 = (300 / 5 / MAX_PLAUSIBLE_WPM) * 60_000;
+
+/** Linha final já sanitizada (o filtro roda depois de `sanitizeResults`). */
+const row = (over: Partial<ResultRow> = {}): ResultRow => ({
+  id: "p1",
+  name: "caio",
+  color: "#00ff88",
+  wpm: 85,
+  accuracy: 97,
+  errors: 3,
+  progress: 1,
+  place: 1,
+  finished: true,
+  finishedAt: null,
+  ...over
+});
+
+describe("dropTemporallyImpossible — o ataque da issue #34", () => {
+  it("finish 200 ms depois do start com wpm 349 → descartado", () => {
+    // 300 chars exigem 10,3 s mesmo no teto humano; 200 ms não comporta nada.
+    const out = dropTemporallyImpossible([row({ wpm: 349 })], TIMED_ROOM, RACE_START + 200);
+    expect(out).toEqual([]);
+  });
+
+  it("o mesmo ataque SEM o campo `progress` também cai (o desligamento por omissão)", () => {
+    // Vetor primário do veto de 01/08: `sanitizeResults` normaliza `progress`
+    // ausente para 0, e a versão anterior lia isso como "nada a provar". O
+    // `finished: true` do próprio payload agora vale trabalho completo.
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349, progress: 0, finished: true })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("alegar WPM sem alegar trabalho nenhum é incoerente → descartado", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349, progress: 0, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("descarta só a linha impossível, preservando as honestas do mesmo payload", () => {
+    // Aos 2 s do start, só quem digitou POUCO é possível: o honesto está em 15
+    // chars (mínimo 514 ms) e o forjado alega os 300 (mínimo 10,3 s).
+    const out = dropTemporallyImpossible(
+      [
+        row({ name: "honesto", wpm: 90, progress: 0.05, finished: false }),
+        row({ name: "forjado", wpm: 349, progress: 0, finished: true })
+      ],
+      TIMED_ROOM,
+      RACE_START + 2_000
+    );
+    expect(out.map(r => r.name)).toEqual(["honesto"]);
+  });
+
+  it("residual declarado: esperar o mínimo físico (~10,3 s) torna a claim consistente", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349 })],
+      TIMED_ROOM,
+      RACE_START + Math.ceil(MIN_MS_300)
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("a fronteira é o mínimo físico menos a tolerância de relógio", () => {
+    const at = (ms: number) =>
+      dropTemporallyImpossible([row({ wpm: 349 })], TIMED_ROOM, RACE_START + ms).length;
+    const edge = Math.floor(MIN_MS_300 - TIMING_EPS_MS);
+    expect(at(edge - 1)).toBe(0);
+    expect(at(edge + 1)).toBe(1);
+  });
+});
+
+describe("dropTemporallyImpossible — nunca descarta jogador honesto", () => {
+  it("digitador ruim: 300 chars em 90 s com só 60 corretos (wpm 8) → preservado", () => {
+    // O caso que INVERTIA a versão anterior: piso derivado do `wpm` alegado
+    // exigia ~62% de acerto e apagava este jogador da tela de Results.
+    const out = dropTemporallyImpossible([row({ wpm: 8 })], TIMED_ROOM, RACE_START + 90_000);
+    expect(out).toHaveLength(1);
+  });
+
+  it("corrida de 60 s com 3 erros não corrigidos (wpm 59) → preservada", () => {
+    const out = dropTemporallyImpossible([row({ wpm: 59 })], TIMED_ROOM, RACE_START + 60_000);
+    expect(out).toHaveLength(1);
+  });
+
+  it("jogador lento/ocioso: 10 chars em 5 min, wpm 0 → preservado", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 0, progress: 10 / 300, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 300_000
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("abandono no meio (progress parcial) é julgado pelo que digitou", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 30, progress: 0.25, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 30_000
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("quem não digitou nada e não alega WPM passa", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 0, progress: 0, finished: false })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("o WPM máximo plausível numa corrida real de 60 s passa", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: MAX_PLAUSIBLE_WPM })],
+      TIMED_ROOM,
+      RACE_START + 60_000
+    );
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe("dropTemporallyImpossible — `finishedAt` do cliente é ignorado", () => {
+  it("finishedAt baixo (forjável por terceiro no broadcast) não derruba o honesto", () => {
+    // Vetor 4 do veto: `finishedAt` chega por broadcast sem autoridade, então
+    // apertar o piso com ele deixava um anon apagar a linha da vítima.
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 59, finishedAt: RACE_START + 200 })],
+      TIMED_ROOM,
+      RACE_START + 60_000
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("finishedAt no futuro também não compra tempo (o relógio é só do servidor)", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349, finishedAt: RACE_START + 3_600_000 })],
+      TIMED_ROOM,
+      RACE_START + 200
+    );
+    expect(out).toEqual([]);
+  });
+});
+
+describe("dropTemporallyImpossible — sala em estado degenerado", () => {
+  it("start_at ausente numa sala racing → descarta tudo (nunca 'passa tudo')", () => {
+    const out = dropTemporallyImpossible(
+      [row(), row({ name: "z" })],
+      { start_at: null, snippet: TIMED_ROOM.snippet } as unknown as RoomRow,
+      RACE_START + 60_000
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("start_at inválido → descarta tudo", () => {
+    const out = dropTemporallyImpossible(
+      [row()],
+      { start_at: "ontem", snippet: TIMED_ROOM.snippet } as unknown as RoomRow,
+      RACE_START + 60_000
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("sala sem snippet → sem alvo para medir, a linha passa", () => {
+    const out = dropTemporallyImpossible(
+      [row({ wpm: 349 })],
+      { start_at: TIMED_ROOM.start_at, snippet: null } as unknown as RoomRow,
+      RACE_START + 200
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("relógio do servidor atrás do start_at → elapsed 0, nada impossível passa", () => {
+    const out = dropTemporallyImpossible([row({ wpm: 349 })], TIMED_ROOM, RACE_START - 5_000);
+    expect(out).toEqual([]);
+  });
+
+  it("array vazio → array vazio", () => {
+    expect(dropTemporallyImpossible([], TIMED_ROOM, RACE_START + 60_000)).toEqual([]);
+  });
+});
+
+describe("dropTemporallyImpossible — a tolerância é de relógio, não de anti-cheat", () => {
+  it("TIMING_EPS_MS é pequena o bastante para não comprar caracteres de graça", () => {
+    // Meio segundo no teto humano vale ~14 chars; a folga fica bem abaixo disso.
+    expect(TIMING_EPS_MS).toBeGreaterThanOrEqual(0);
+    expect(TIMING_EPS_MS).toBeLessThanOrEqual(500);
+  });
+});
+
 
 // ─── Builders do leaderboard (matches/scores) ────────────────────────────────
 // Antes da #50 esse mapeamento vivia inline dentro de `persistMatch` (async e

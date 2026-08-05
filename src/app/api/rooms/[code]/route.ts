@@ -13,6 +13,7 @@ import {
   resolveLang,
   roomUpdateOutcome,
   sanitizeResults,
+  dropTemporallyImpossible,
   ABSOLUTE_MAX_PLAYERS,
   type ResultRow,
   type RoomRow
@@ -164,7 +165,19 @@ export async function POST(req: Request, { params }: { params: { code: string } 
     case "finish": {
       // Fronteira anti-cheat: `results` vem do cliente e alimenta o leaderboard
       // global. Sanitiza/clampa/descarta linhas forjadas antes de persistir.
-      const results: ResultRow[] = sanitizeResults(body.results, room as RoomRow);
+      // `sanitizeResults` limita o valor; `dropTemporallyImpossible` olha o relógio
+      // e descarta o trabalho que o tempo decorrido não comporta (#34). Nenhum
+      // ramo de erro novo: `finish` no countdown já era neutralizado pelo próprio
+      // filtro (elapsed 0 ⇒ nada digitado cabe), e devolver 409 aqui prendia a sala
+      // em `racing` — `finishPostedRef` do líder é gravado ANTES do post e nunca
+      // reseta em falha (`useRoom.ts`), então um único 409 por skew de relógio
+      // desligava o encerramento pelo resto da corrida (veto do quórum de 01/08).
+      const now = Date.now();
+      const results: ResultRow[] = dropTemporallyImpossible(
+        sanitizeResults(body.results, room as RoomRow),
+        room as RoomRow,
+        now
+      );
       // Conditional transition racing→finished so only the first caller persists.
       const { data: flipped, error: finishErr } = await sb
         .from("rooms")

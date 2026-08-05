@@ -67,6 +67,33 @@ function sanitizeResults(input, room) {
   return out;
 }
 
+// ─── Espelho de dropTemporallyImpossible() (src/lib/room.ts, issue #34) ───────
+// `sanitizeResults` limita o VALOR e é cega ao relógio: com o teto em 350, o
+// forjador pede 349 e entra no ranking sem digitar. A checagem temporal é o
+// mínimo FÍSICO — concluir N chars custa pelo menos `(N/5)/MAX_PLAUSIBLE_WPM`
+// minutos de relógio, e o servidor mede esse tempo sozinho. O `wpm` alegado NÃO
+// entra na conta (a 1ª versão usava, e por isso invertia: derrubava o honesto
+// impreciso e deixava passar o trapaceiro paciente).
+
+const TIMING_EPS_MS = 250;
+
+/** Espelho fiel de `dropTemporallyImpossible(rows, room, nowMs)` (sem o console.warn). */
+function dropTemporallyImpossible(rows, room, nowMs) {
+  const startMs = room?.start_at ? Date.parse(room.start_at) : NaN;
+  if (!Number.isFinite(startMs)) return [];
+  const chars = room?.snippet?.code?.length ?? 0;
+  const elapsedMs = Math.max(0, nowMs - startMs);
+
+  return rows.filter(r => {
+    if (chars <= 0) return true;
+    const claimed = Math.max(0, Math.min(1, Number(r.progress) || 0));
+    const typedChars = Math.max(claimed, r.finished ? 1 : 0) * chars;
+    if (typedChars <= 0) return !(Number(r.wpm) > 0);
+    const needMs = (typedChars / 5 / MAX_PLAUSIBLE_WPM) * 60_000;
+    return !(elapsedMs + TIMING_EPS_MS < needMs);
+  });
+}
+
 // ─── Espelho da allowlist de settings (src/lib/room.ts) ───────────────────────
 // A fonte de verdade é `LANGUAGES`/`DIFFICULTIES` em src/lib/languages.ts. Este
 // espelho segue o padrão do arquivo (sem import de TS) — se as listas mudarem lá,
@@ -237,6 +264,99 @@ console.log("\n── Entradas degeneradas ────────────�
   assert("linha não-objeto (string) → ignorada",
     sanitizeResults(['forjado', legit()], ROOM).length === 1);
 }
+
+// ─── Coerência temporal do finish (issue #34) ────────────────────────────────
+
+const RACE_START = Date.parse('2026-07-30T12:00:00.000Z');
+const TIMED_ROOM = {
+  start_at: new Date(RACE_START).toISOString(),
+  snippet: { title: 't', code: 'x'.repeat(300), language: 'javascript', difficulty: 'easy' }
+};
+/** Mínimo físico para 300 chars no teto humano: 10.285,7 ms. */
+const MIN_MS_300 = (300 / 5 / MAX_PLAUSIBLE_WPM) * 60_000;
+/** Linha já sanitizada (o filtro roda depois de `sanitizeResults`). */
+const timed = (over = {}) => ({ ...legit({ finishedAt: null }), ...over });
+
+console.log("\n── Anti-cheat: coerência temporal do finish (#34) ───────────────");
+{
+  assert("ataque da issue: finish 200 ms após o start com wpm 349 → descartado",
+    dropTemporallyImpossible([timed({ wpm: 349 })], TIMED_ROOM, RACE_START + 200).length === 0);
+  assert("ataque SEM o campo `progress` também cai (desligamento por omissão)",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349, progress: 0, finished: true })], TIMED_ROOM, RACE_START + 200
+    ).length === 0);
+  assert("WPM alegado sem trabalho alegado é incoerente → descartado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349, progress: 0, finished: false })], TIMED_ROOM, RACE_START + 200
+    ).length === 0);
+  assert("residual declarado: esperar o mínimo físico (~10,3 s) passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349 })], TIMED_ROOM, RACE_START + Math.ceil(MIN_MS_300)
+    ).length === 1);
+  assert("fronteira = mínimo físico menos a tolerância de relógio",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349 })], TIMED_ROOM, RACE_START + Math.floor(MIN_MS_300 - TIMING_EPS_MS) - 1
+    ).length === 0 &&
+    dropTemporallyImpossible(
+      [timed({ wpm: 349 })], TIMED_ROOM, RACE_START + Math.floor(MIN_MS_300 - TIMING_EPS_MS) + 1
+    ).length === 1);
+
+  // Não-regressão do que a 1ª versão (3×VETA) quebrava: o honesto impreciso.
+  assert("digitador ruim: 300 chars em 90 s com wpm 8 → preservado",
+    dropTemporallyImpossible([timed({ wpm: 8 })], TIMED_ROOM, RACE_START + 90_000).length === 1);
+  assert("corrida honesta de 60 s com 3 erros não corrigidos (wpm 59) → preservada",
+    dropTemporallyImpossible([timed({ wpm: 59 })], TIMED_ROOM, RACE_START + 60_000).length === 1);
+  assert("jogador lento: 10 chars em 5 min, wpm 0 → preservado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 0, progress: 10 / 300, finished: false })], TIMED_ROOM, RACE_START + 300_000
+    ).length === 1);
+  assert("abandono com progress parcial → julgado pelo que digitou, preservado",
+    dropTemporallyImpossible(
+      [timed({ wpm: 30, progress: 0.25, finished: false })], TIMED_ROOM, RACE_START + 30_000
+    ).length === 1);
+  assert("quem não digitou nada e não alega WPM → passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: 0, progress: 0, finished: false })], TIMED_ROOM, RACE_START + 200
+    ).length === 1);
+  assert("teto humano numa corrida real de 60 s → passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: MAX_PLAUSIBLE_WPM })], TIMED_ROOM, RACE_START + 60_000
+    ).length === 1);
+
+  assert("finishedAt baixo (forjável por terceiro) não derruba o honesto",
+    dropTemporallyImpossible(
+      [timed({ wpm: 59, finishedAt: RACE_START + 200 })], TIMED_ROOM, RACE_START + 60_000
+    ).length === 1);
+  assert("finishedAt no futuro não compra tempo",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349, finishedAt: RACE_START + 3_600_000 })], TIMED_ROOM, RACE_START + 200
+    ).length === 0);
+
+  assert("sala racing sem start_at → descarta tudo (nunca 'passa tudo')",
+    dropTemporallyImpossible(
+      [timed(), timed({ name: 'z' })],
+      { start_at: null, snippet: TIMED_ROOM.snippet }, RACE_START + 60_000
+    ).length === 0);
+  assert("start_at inválido → descarta tudo",
+    dropTemporallyImpossible(
+      [timed()], { start_at: 'ontem', snippet: TIMED_ROOM.snippet }, RACE_START + 60_000
+    ).length === 0);
+  assert("sala sem snippet → sem alvo para medir, a linha passa",
+    dropTemporallyImpossible(
+      [timed({ wpm: 349 })], { start_at: TIMED_ROOM.start_at, snippet: null }, RACE_START + 200
+    ).length === 1);
+  assert("relógio do servidor antes do start → elapsed 0, impossível não passa",
+    dropTemporallyImpossible([timed({ wpm: 349 })], TIMED_ROOM, RACE_START - 5_000).length === 0);
+  // Aos 2 s do start, só quem digitou POUCO é possível: o honesto está em 15
+  // chars (need 514 ms) e o forjado alega os 300 (need 10,3 s).
+  assert("descarta só a linha impossível, preserva a honesta do mesmo payload",
+    dropTemporallyImpossible(
+      [timed({ name: 'honesto', wpm: 90, progress: 0.05, finished: false }),
+       timed({ name: 'forjado', wpm: 349, progress: 0, finished: true })],
+      TIMED_ROOM, RACE_START + 2_000
+    ).map(r => r.name).join() === 'honesto');
+}
+
 
 // ─── validateMatchInsert (linha na tabela `matches`) ──────────────────────────
 

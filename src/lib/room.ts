@@ -351,6 +351,108 @@ export function sanitizeResults(
   return out;
 }
 
+// ─── Coerência temporal do `finish` (issue #34) ───────────────────────────────
+// `sanitizeResults` limita o VALOR (teto global de 350 WPM) mas é cega ao relógio:
+// um payload com `wpm: 349` 200 ms depois do `start` passa e entra no ranking sem
+// que uma tecla tenha sido digitada. O servidor tem como provar a impossibilidade
+// FÍSICA — ele conhece `start_at` e o tamanho do snippet.
+//
+// O que o servidor prova é TEMPO, não velocidade: concluir `N` caracteres exige,
+// no mínimo, `(N/5) / MAX_PLAUSIBLE_WPM` minutos de relógio. Quem alega trabalho
+// que não cabe no tempo decorrido é descartado.
+//
+// A primeira versão desta regra (quórum de 01/08, 3×VETA) derivava o piso do
+// `wpm` REIVINDICADO — e por isso se invertia: o honesto que erra muito reporta
+// WPM baixo com `progress: 1` e caía; o trapaceiro que reporta WPM alto passava.
+// Aqui o piso não depende de nada que o atacante escolha, só do trabalho alegado:
+// o honesto é sempre MAIS LENTO que o mínimo físico, nunca mais rápido, então o
+// falso-positivo não existe por construção — e não sobra folga para calibrar.
+
+/**
+ * Tolerância de relógio, em ms, entre `start_at` (gravado pelo Postgres no start)
+ * e o `Date.now()` da instância que atende o `finish`. Não é folga de anti-cheat:
+ * é o skew entre dois relógios de servidor.
+ */
+export const TIMING_EPS_MS = 250;
+
+/** Milissegundos mínimos para digitar `chars` caracteres no teto humano plausível. */
+function minMsToType(chars: number): number {
+  return (chars / 5 / MAX_PLAUSIBLE_WPM) * 60_000;
+}
+
+/**
+ * Descarta as linhas de `finish` temporalmente impossíveis: o jogador alega ter
+ * digitado mais caracteres do que caberia, no limite físico, no tempo decorrido
+ * desde `start_at`. Puro e determinístico (`nowMs` entra por parâmetro).
+ *
+ * Regras, por linha:
+ * - `N = max(clamp(progress), finished ? 1 : 0) * chars` — trabalho alegado. O
+ *   `finished` entra no `max` porque omitir `progress` era o desligamento do
+ *   controle: `{finished: true, wpm: 349}` sem `progress` valia `N = 0`.
+ * - `N <= 0` (nada digitado) só passa com `wpm <= 0`: alegar velocidade sem
+ *   alegar trabalho é incoerente por definição. Sala sem `snippet` (`chars <= 0`)
+ *   passa — não há alvo para medir.
+ * - Descarta quando `now - start_at + TIMING_EPS_MS < minMsToType(N)`.
+ * - `start_at` ausente/inválido → descarta tudo: numa sala `racing` isso é estado
+ *   impossível, e "passa tudo" seria justamente o buraco.
+ *
+ * O `finishedAt` do cliente é IGNORADO de propósito: ele chega por broadcast sem
+ * autoridade (`useRoom.ts` confia no `m.id`), então só serviria para um terceiro
+ * apertar o piso da vítima e fazer o servidor apagar a linha de um honesto.
+ *
+ * Escopo honesto: isto prova impossibilidade, não honestidade. Quem espera o
+ * tempo mínimo (~10,3 s para 300 chars) produz uma claim fisicamente consistente;
+ * o teto de valor continua sendo `MAX_PLAUSIBLE_WPM`. A fechadura de verdade é
+ * identidade/roster (#6).
+ *
+ * Coberto por `src/lib/room.test.ts` e `scripts/validate-persistence.mjs`.
+ */
+export function dropTemporallyImpossible(
+  rows: ResultRow[],
+  room: Pick<RoomRow, "start_at" | "snippet">,
+  nowMs: number
+): ResultRow[] {
+  const startMs = room?.start_at ? Date.parse(room.start_at) : NaN;
+  if (!Number.isFinite(startMs)) return []; // sala `racing` sem relógio → nada é provável
+  const chars = room?.snippet?.code?.length ?? 0;
+  const elapsedMs = Math.max(0, nowMs - startMs);
+
+  return rows.filter(r => {
+    if (chars <= 0) return true; // sem snippet não há trabalho a medir
+    const claimed = Math.max(0, Math.min(1, Number(r.progress) || 0));
+    const typedChars = Math.max(claimed, r.finished ? 1 : 0) * chars;
+
+    if (typedChars <= 0) {
+      // Nada digitado: coerente só com WPM zero. `{wpm: 349}` sem trabalho é o
+      // ataque da issue com o campo `progress` omitido.
+      if (Number(r.wpm) > 0) {
+        console.warn("[finish:timing] linha sem trabalho alegado e com WPM > 0", {
+          name: r.name,
+          wpm: r.wpm
+        });
+        return false;
+      }
+      return true;
+    }
+
+    const needMs = minMsToType(typedChars);
+    if (elapsedMs + TIMING_EPS_MS < needMs) {
+      // Descarte é invisível na tela (o `finish` é do líder, não da vítima): o log
+      // do servidor é o único rastro. Aqui ele nunca deveria disparar por honesto —
+      // o mínimo é físico, não estatístico.
+      console.warn("[finish:timing] linha descartada", {
+        name: r.name,
+        wpm: r.wpm,
+        typedChars: Math.round(typedChars),
+        elapsedMs,
+        needMs: Math.round(needMs)
+      });
+      return false;
+    }
+    return true;
+  });
+}
+
 // ─── Montagem das linhas do leaderboard (matches/scores) ─────────────────────
 // A API só orquestra os `insert`; o mapeamento `results → linhas` vive aqui,
 // puro e determinístico, para ser coberto por teste (o `finished_at` entra como
