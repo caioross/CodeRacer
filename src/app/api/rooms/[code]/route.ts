@@ -9,6 +9,7 @@ import {
   addKickedId,
   canKick,
   kickedListFull,
+  resetToLobbySpec,
   resolveDifficulty,
   resolveLang,
   roomUpdateOutcome,
@@ -244,8 +245,10 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // conferem o `error` do update). Statements separados: o reset sempre vale.
       // Ordem importa: limpa os expulsos ANTES de anunciar o lobby, senão o
       // evento que devolve todo mundo ao lobby ainda carrega a lista velha.
-      // Best-effort: inerte enquanto a 0005 não estiver aplicada.
-      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
+      // Best-effort: inerte enquanto a 0005 não estiver aplicada. Carrega a mesma
+      // guarda da escrita principal (#131): sem ela, um `reset` forjado no meio da
+      // corrida ainda devolveria os expulsos à sala antes de tomar o 409.
+      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code).eq("status", "finished");
       // O reset em si, ao contrário da limpeza acima, precisa ser confirmado:
       // "jogar de novo" que falha em silêncio deixa a sala presa em `finished`.
       // `snippet` NÃO é zerado de propósito (#115): é a única memória de qual
@@ -254,11 +257,12 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // os jogadores na corrida que terminou — e o `start` o sobrescreve antes do
       // countdown, então ninguém antecipa o próximo alvo. Nenhuma tela deriva
       // fase de `snippet == null` (RoomView/Race/useRoom decidem por `status`).
-      const res = await applyRoomUpdate(sb, code, "reset", {
-        status: "lobby",
-        start_at: null,
-        results: null
-      });
+      // A transição é condicional a `finished` (#131): guardar só o `start` não
+      // fecharia o abuso — `reset` incondicional já mata a corrida em andamento e
+      // ainda deixa a sala em `lobby`, exatamente onde o `start` guardado passa.
+      // Mesmo desenho do `start`: a guarda vai no UPDATE, quem decide é o banco.
+      const spec = resetToLobbySpec();
+      const res = await applyRoomUpdate(sb, code, "reset", spec.patch, spec);
       if (res.failed) return res.failed;
       // A limpeza de `kicked_ids` acima não é anunciada por si: esta linha já
       // vem depois dela e carrega a lista zerada junto com o lobby.

@@ -673,3 +673,28 @@ export function startRaceSpec(snippet: RoomSnippet, startAt: string): RoomUpdate
     conflict: "A partida já começou"
   };
 }
+
+/**
+ * `reset` ("jogar de novo") é uma transição CONDICIONAL `finished → lobby` (#131).
+ *
+ * Sem esta guarda, guardar só o `start` não fecha nada: `reset` escrevia
+ * incondicionalmente `status: "lobby"`, `start_at: null` e `results: null`, então
+ * um `reset` postado no meio da corrida já matava a partida de todo mundo — e
+ * deixava a sala em `lobby`, onde o `start` guardado passa a bater. Dois POSTs
+ * reconstituíam o abuso inteiro. A guarda do `start` estreita a janela; é esta
+ * que fecha a porta.
+ *
+ * `finished` é a única origem legítima: `RoomView` só monta `<Results
+ * onPlayAgain>` em `status === "finished"`, e `resetToLobby` (`useRoom`) é o
+ * único caller da action. Zero linhas ⇒ a sala não tinha partida encerrada ⇒ 409
+ * sem tocar `status`, `start_at` nem `results`.
+ *
+ * `snippet` segue fora do patch de propósito (#115) — ver o case "reset".
+ */
+export function resetToLobbySpec(): RoomUpdateSpec {
+  return {
+    patch: { status: "lobby", start_at: null, results: null },
+    match: { status: "finished" },
+    conflict: "A partida ainda não terminou"
+  };
+}
