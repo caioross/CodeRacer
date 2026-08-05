@@ -623,9 +623,53 @@ export interface RoomUpdateOutcome {
 export function roomUpdateOutcome(res: {
   error?: unknown;
   rows?: number | null;
+  /**
+   * Copy do 409 quando a escrita era CONDICIONAL (ver `startRaceSpec`): aí zero
+   * linhas tem uma causa dominante conhecida — a guarda não bateu — e dizer isso
+   * é mais honesto que a copy neutra. Ausente ⇒ mantém a neutra do #56.
+   */
+  conflict?: string;
 }): RoomUpdateOutcome {
   if (res.error) return { ok: false, status: 500, error: "Não foi possível atualizar a sala" };
   if (!res.rows || res.rows < 1)
-    return { ok: false, status: 409, error: "Não foi possível confirmar a alteração" };
+    return {
+      ok: false,
+      status: 409,
+      error: res.conflict || "Não foi possível confirmar a alteração"
+    };
   return { ok: true, status: 200 };
+}
+
+/** Escrita condicional em `rooms`: o que muda, sob qual guarda, e o 409 se falhar. */
+export interface RoomUpdateSpec {
+  /** Colunas escritas. */
+  patch: Record<string, unknown>;
+  /** Filtro que a escrita carrega ALÉM do `code` — a guarda de estado. */
+  match: Record<string, unknown>;
+  /** Copy do 409 quando a guarda não bate. */
+  conflict: string;
+}
+
+/**
+ * `start` é uma transição CONDICIONAL `lobby → racing` (#131).
+ *
+ * A action só conferia `isLeader` e escrevia incondicionalmente: um `start`
+ * postado no meio da corrida sorteava snippet novo, zerava `results` e jogava
+ * `start_at` 4 s para o futuro embaixo dos dedos de todo mundo — e o `leader_id`
+ * vem em claro no `GET /api/rooms/<code>`, então o vetor é anônimo. Checar
+ * `room.status` lido antes do UPDATE não resolveria: entre o SELECT e a escrita
+ * outro cliente pode ter iniciado (o mesmo TOCTOU que o `finish` já evita com
+ * `.eq("status", "racing")`). A guarda mora no `match`, aplicado pelo banco.
+ *
+ * Zero linhas ⇒ a sala não estava em `lobby` ⇒ 409 sem tocar `snippet`,
+ * `start_at` nem `results`. O caminho legítimo da revanche continua inteiro:
+ * `RoomView` só monta o botão "Iniciar partida" em `lobby`, e de `finished` o
+ * produto passa por `reset` (→ `lobby`) antes de qualquer `start`.
+ */
+export function startRaceSpec(snippet: RoomSnippet, startAt: string): RoomUpdateSpec {
+  return {
+    patch: { status: "racing", snippet, start_at: startAt, results: null },
+    match: { status: "lobby" },
+    conflict: "A partida já começou"
+  };
 }

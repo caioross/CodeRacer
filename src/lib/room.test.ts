@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   sanitizeResults,
+  startRaceSpec,
   buildMatchRow,
   buildScoreRows,
   clampInt,
@@ -582,6 +583,71 @@ describe("roomUpdateOutcome", () => {
   it("nunca emite ok sem evidência de escrita (AC da #56)", () => {
     const semEvidencia = [{ rows: 0 }, { rows: null }, { error: { message: "x" }, rows: 1 }];
     for (const res of semEvidencia) expect(roomUpdateOutcome(res).ok).toBe(false);
+  });
+
+  it("escrita condicional: zero linhas usa a copy da guarda, ainda em 409 (#131)", () => {
+    const out = roomUpdateOutcome({ rows: 0, conflict: "A partida já começou" });
+    expect(out.status).toBe(409);
+    expect(out.error).toBe("A partida já começou");
+  });
+
+  it("erro do banco ignora a copy da guarda — 500 neutro (#131)", () => {
+    // Com `error` não sabemos se a guarda bateu; afirmar "já começou" seria
+    // inventar causa. A precedência do #56 continua valendo.
+    const out = roomUpdateOutcome({ error: { message: "timeout" }, rows: 0, conflict: "A partida já começou" });
+    expect(out.status).toBe(500);
+    expect(out.error).toBe("Não foi possível atualizar a sala");
+  });
+});
+
+// #131 — `start` só conferia `isLeader` e escrevia incondicionalmente: um POST
+// no meio da corrida trocava o snippet, zerava `results` e empurrava `start_at`
+// para o futuro na tela de todos. O `leader_id` sai em claro no GET da sala, então
+// o vetor é anônimo. Esta é a guarda que a rota manda para o banco.
+describe("startRaceSpec (#131)", () => {
+  const SNIPPET = {
+    title: "quicksort",
+    code: "const a = 1;",
+    language: "javascript",
+    difficulty: "medium"
+  } as const;
+  const START_AT = "2026-08-05T14:00:04.000Z";
+
+  it("a transição é condicional a lobby — a guarda vai no UPDATE, não numa leitura", () => {
+    const spec = startRaceSpec(SNIPPET, START_AT);
+    // Sem este `match` o UPDATE volta a ser incondicional: é ele que impede um
+    // `start` em `racing`/`finished` de tocar a partida em andamento.
+    expect(spec.match).toEqual({ status: "lobby" });
+  });
+
+  it("escreve exatamente as 4 colunas do start (nada além)", () => {
+    const spec = startRaceSpec(SNIPPET, START_AT);
+    expect(spec.patch).toEqual({
+      status: "racing",
+      snippet: SNIPPET,
+      start_at: START_AT,
+      results: null
+    });
+  });
+
+  it("start fora do lobby → 409 e NENHUMA coluna tocada", () => {
+    const spec = startRaceSpec(SNIPPET, START_AT);
+    // Simula o que o banco devolve quando a sala está em `racing`/`finished`:
+    // o filtro não casa nenhuma linha, então o patch não foi aplicado.
+    const out = roomUpdateOutcome({ rows: 0, conflict: spec.conflict });
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe(409);
+    expect(out.error).toBe("A partida já começou");
+    // A ausência de linha é a prova: `snippet`, `start_at` e `results` intactos.
+    expect(Object.keys(spec.patch)).toEqual(["status", "snippet", "start_at", "results"]);
+  });
+
+  it("start no lobby → segue o caminho feliz", () => {
+    const spec = startRaceSpec(SNIPPET, START_AT);
+    expect(roomUpdateOutcome({ rows: 1, conflict: spec.conflict })).toEqual({
+      ok: true,
+      status: 200
+    });
   });
 });
 

@@ -13,6 +13,7 @@ import {
   resolveLang,
   roomUpdateOutcome,
   sanitizeResults,
+  startRaceSpec,
   ABSOLUTE_MAX_PLAYERS,
   type ResultRow,
   type RoomRow
@@ -37,10 +38,15 @@ async function applyRoomUpdate(
   sb: SupabaseClient,
   code: string,
   action: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  // Guarda de estado opcional (#131): quando presente, o filtro entra na PRÓPRIA
+  // escrita — quem decide se a transição vale é o banco, não uma leitura anterior.
+  guard?: { match: Record<string, unknown>; conflict: string }
 ): Promise<{ failed: NextResponse; row?: undefined } | { failed?: undefined; row: RoomRow }> {
-  const { data, error } = await sb.from("rooms").update(patch).eq("code", code).select("*");
-  const outcome = roomUpdateOutcome({ error, rows: data?.length });
+  let q = sb.from("rooms").update(patch).eq("code", code);
+  if (guard) q = q.match(guard.match);
+  const { data, error } = await q.select("*");
+  const outcome = roomUpdateOutcome({ error, rows: data?.length, conflict: guard?.conflict });
   if (!outcome.ok) {
     // Detalhe do banco fica no servidor; o cliente recebe copy neutra.
     if (error) console.error("[rooms:update]", action, error.message);
@@ -150,12 +156,12 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // (#115). Primeira partida da sala → `undefined` → sorteio normal.
       const snippet = pickSnippet(room.language, room.difficulty, room.snippet?.title);
       const startAt = new Date(Date.now() + COUNTDOWN_MS).toISOString();
-      const res = await applyRoomUpdate(sb, code, "start", {
-        status: "racing",
-        snippet,
-        start_at: startAt,
-        results: null
-      });
+      // A transição é condicional a `lobby` (#131): `start` numa sala em
+      // `racing`/`finished` não pode trocar o snippet nem zerar `results` de uma
+      // partida em andamento. A regra é pura e testada (`startRaceSpec`); aqui
+      // só há I/O — e o filtro vai junto do UPDATE, não numa checagem lida antes.
+      const spec = startRaceSpec(snippet, startAt);
+      const res = await applyRoomUpdate(sb, code, "start", spec.patch, spec);
       if (res.failed) return res.failed;
       await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
