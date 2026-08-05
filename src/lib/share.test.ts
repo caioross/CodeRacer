@@ -61,9 +61,14 @@ describe("buildShareText — URL", () => {
     expect(buildShareText(player())).toContain(SITE.url);
   });
 
+  // A origem custom precisa ser diferente de `SITE.url` para a asserção ter
+  // sentido — e `SITE.url` cai em http://localhost:3000 quando o ambiente não
+  // revela origem nenhuma (#117), que é justamente o caso aqui no vitest.
   it("respeita a origem custom recebida (origin real do deploy)", () => {
-    expect(buildShareText(player(), "http://localhost:3000")).toContain("http://localhost:3000");
-    expect(buildShareText(player(), "http://localhost:3000")).not.toContain(SITE.url);
+    const custom = "https://coderacer.example";
+    expect(custom).not.toBe(SITE.url);
+    expect(buildShareText(player(), custom)).toContain(custom);
+    expect(buildShareText(player(), custom)).not.toContain(SITE.url);
   });
 });
 
