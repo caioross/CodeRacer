@@ -166,22 +166,14 @@ export async function POST(req: Request, { params }: { params: { code: string } 
     case "finish": {
       // Fronteira anti-cheat: `results` vem do cliente e alimenta o leaderboard
       // global. Sanitiza/clampa/descarta linhas forjadas antes de persistir.
-      const now = Date.now();
-      const startMs = room.start_at ? Date.parse(room.start_at) : NaN;
-      // Corrida ainda no countdown: nenhum caractere pôde ser digitado, então este
-      // `finish` não é o caminho feliz de ninguém — é ataque ou bug. 409 honesto,
-      // sem flipar a sala nem persistir (#34). O `<` espelha exatamente as guardas
-      // do cliente (`shouldFinishRace` e o caminho de sala vazia em `useRoom.ts:508`,
-      // ambos `now < startMs`), então nenhum `finish` legítimo passa a levar 409.
-      // Fora de `racing` nada muda: o update condicional abaixo segue devolvendo
-      // `ok: true` sem linhas, como a #96 decidiu de propósito.
-      if (room.status === "racing" && Number.isFinite(startMs) && now < startMs)
-        return NextResponse.json(
-          { ok: false, error: "A corrida ainda não começou" },
-          { status: 409 }
-        );
       // `sanitizeResults` limita o valor; `dropTemporallyImpossible` olha o relógio
-      // e descarta o que o tempo decorrido não comporta (piso por jogador, #34).
+      // e descarta o trabalho que o tempo decorrido não comporta (#34). Nenhum
+      // ramo de erro novo: `finish` no countdown já era neutralizado pelo próprio
+      // filtro (elapsed 0 ⇒ nada digitado cabe), e devolver 409 aqui prendia a sala
+      // em `racing` — `finishPostedRef` do líder é gravado ANTES do post e nunca
+      // reseta em falha (`useRoom.ts`), então um único 409 por skew de relógio
+      // desligava o encerramento pelo resto da corrida (veto do quórum de 01/08).
+      const now = Date.now();
       const results: ResultRow[] = dropTemporallyImpossible(
         sanitizeResults(body.results, room as RoomRow),
         room as RoomRow,
