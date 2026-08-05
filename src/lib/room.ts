@@ -280,6 +280,15 @@ export const MAX_PLAUSIBLE_WPM = 350;
 export const MAX_NAME_LEN = 20;
 /** Teto absoluto de jogadores por sala — fonte única do cap (API + sliders da UI). */
 export const ABSOLUTE_MAX_PLAYERS = 30;
+/**
+ * Maior valor que cabe num `int` do Postgres (int4). `scores.errors` e
+ * `scores.place` são `int` (`0001_coderacer_init.sql:30,32`): um número acima
+ * disso não vira "score alto", vira `22003 numeric field overflow` — o insert de
+ * `scores` inteiro falha. Como o insert de `matches` NÃO carrega esses campos,
+ * ele passa, e a partida fica meia-gravada (ou, com o rollback de #112, é
+ * apagada). Clampar aqui mantém a falha impossível de forjar pelo cliente.
+ */
+export const MAX_INT4 = 2_147_483_647;
 
 /** Arredonda e força um inteiro finito dentro de [min, max]; NaN vira `min`. */
 export function clampInt(n: unknown, min: number, max: number): number {
@@ -328,9 +337,13 @@ export function sanitizeResults(
       color: typeof row.color === "string" ? row.color : "",
       wpm,
       accuracy: clampInt(row.accuracy, 0, 100),
-      errors: clampInt(row.errors, 0, Number.MAX_SAFE_INTEGER),
+      errors: clampInt(row.errors, 0, MAX_INT4),
       progress: Math.max(0, Math.min(1, Number(row.progress) || 0)),
-      place: Number.isFinite(placeN) && placeN >= 1 ? placeN : null,
+      // Fora de [1, ABSOLUTE_MAX_PLAYERS] não existe colocação real: vira `null`
+      // ("sem posição") em vez de um inteiro que estoura o `int` de `scores`.
+      place: Number.isFinite(placeN) && placeN >= 1 && placeN <= ABSOLUTE_MAX_PLAYERS
+        ? placeN
+        : null,
       finished: !!row.finished,
       finishedAt: Number.isFinite(Number(row.finishedAt)) ? Number(row.finishedAt) : null
     });
