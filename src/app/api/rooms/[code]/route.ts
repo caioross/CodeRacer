@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { broadcastRealtime, getServerSupabase } from "@/lib/supabase";
+import { persistMatch } from "@/lib/persistMatch";
 import { pickSnippet } from "@/lib/snippets";
 import {
   COUNTDOWN_MS,
   MAX_KICKED_ID_LEN,
   addKickedId,
-  buildMatchRow,
-  buildScoreRows,
   canKick,
   kickedListFull,
   resolveDifficulty,
@@ -274,18 +273,5 @@ export async function POST(req: Request, { params }: { params: { code: string } 
 
     default:
       return NextResponse.json({ ok: false, error: "Ação inválida" }, { status: 400 });
-  }
-}
-
-// Persist a finished match + scores for the leaderboard (best-effort).
-async function persistMatch(sb: SupabaseClient, room: RoomRow, results: ResultRow[]) {
-  try {
-    const matchRow = buildMatchRow(room, results, new Date().toISOString());
-    if (!matchRow) return; // sem resultado → nenhuma `matches` órfã
-    const { data: match } = await sb.from("matches").insert(matchRow).select("id").single();
-    if (!match) return;
-    await sb.from("scores").insert(buildScoreRows(match.id, room, results));
-  } catch (e) {
-    console.warn("[persistMatch]", (e as Error).message);
   }
 }

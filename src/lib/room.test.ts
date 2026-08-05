@@ -11,6 +11,7 @@ import {
   MAX_PLAUSIBLE_WPM,
   MAX_NAME_LEN,
   ABSOLUTE_MAX_PLAYERS,
+  MAX_INT4,
   RACE_IDLE_MS,
   RACE_TIMEOUT_BASE_MS,
   RACE_TIMEOUT_MAX_MS,
@@ -136,6 +137,30 @@ describe("sanitizeResults — clamp de accuracy/errors/place", () => {
     expect(sanitizeResults([legit({ place: 0 })], ROOM)[0].place).toBeNull();
     expect(sanitizeResults([legit({ place: -1 })], ROOM)[0].place).toBeNull();
     expect(sanitizeResults([legit({ place: null })], ROOM)[0].place).toBeNull();
+  });
+
+  // Regressão do quórum da PR #127: `scores.errors`/`scores.place` são `int`
+  // (int4) no Postgres. Um valor acima de MAX_INT4 não vira score inflado — faz
+  // o insert de `scores` estourar (22003) enquanto o de `matches` passa (não
+  // carrega esses campos). Meia partida gravada antes de #112; com o rollback de
+  // #112, a partida inteira some. O teto é o que impede o cliente de escolher.
+  it("clampa errors ao teto do int do Postgres (não deixa estourar o insert)", () => {
+    expect(sanitizeResults([legit({ errors: Number.MAX_SAFE_INTEGER })], ROOM)[0].errors).toBe(
+      MAX_INT4
+    );
+    expect(sanitizeResults([legit({ errors: MAX_INT4 + 1 })], ROOM)[0].errors).toBe(MAX_INT4);
+    expect(sanitizeResults([legit({ errors: 1e21 })], ROOM)[0].errors).toBe(MAX_INT4);
+    expect(sanitizeResults([legit({ errors: MAX_INT4 })], ROOM)[0].errors).toBe(MAX_INT4);
+  });
+
+  it("descarta place acima da capacidade absoluta (não existe 9e15º lugar)", () => {
+    expect(sanitizeResults([legit({ place: 9e15 })], ROOM)[0].place).toBeNull();
+    expect(
+      sanitizeResults([legit({ place: ABSOLUTE_MAX_PLAYERS + 1 })], ROOM)[0].place
+    ).toBeNull();
+    expect(sanitizeResults([legit({ place: ABSOLUTE_MAX_PLAYERS })], ROOM)[0].place).toBe(
+      ABSOLUTE_MAX_PLAYERS
+    );
   });
 });
 

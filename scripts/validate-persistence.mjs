@@ -15,6 +15,8 @@
 const MAX_PLAUSIBLE_WPM = 350;
 const MAX_NAME_LEN = 20;
 const ABSOLUTE_MAX_PLAYERS = 30;
+/** Teto do `int` (int4) do Postgres — `scores.errors`/`scores.place` são `int`. */
+const MAX_INT4 = 2_147_483_647;
 
 function clampInt(n, min, max) {
   const v = Math.round(Number(n));
@@ -53,9 +55,11 @@ function sanitizeResults(input, room) {
       color: typeof r.color === 'string' ? r.color : '',
       wpm,
       accuracy: clampInt(r.accuracy, 0, 100),
-      errors: clampInt(r.errors, 0, Number.MAX_SAFE_INTEGER),
+      errors: clampInt(r.errors, 0, MAX_INT4),
       progress: Math.max(0, Math.min(1, Number(r.progress) || 0)),
-      place: Number.isFinite(placeN) && placeN >= 1 ? placeN : null,
+      place: Number.isFinite(placeN) && placeN >= 1 && placeN <= ABSOLUTE_MAX_PLAYERS
+        ? placeN
+        : null,
       finished: !!r.finished,
       finishedAt: Number.isFinite(Number(r.finishedAt)) ? Number(r.finishedAt) : null
     });
@@ -198,6 +202,21 @@ console.log("\n── accuracy / errors / place: clamp ────────�
   assert("place -1 → null",    sanitizeResults([legit({ place: -1 })], ROOM)[0].place === null);
   assert("place null → null",  sanitizeResults([legit({ place: null })], ROOM)[0].place === null);
   assert("progress 5 → clamp 1", sanitizeResults([legit({ progress: 5 })], ROOM)[0].progress === 1);
+  // `scores.errors`/`scores.place` são `int` (int4). Acima do teto o insert de
+  // `scores` estoura (22003) enquanto o de `matches` passa — meia partida, ou
+  // (com o rollback de #112) partida apagada por um payload forjado.
+  assert("errors MAX_SAFE_INTEGER → MAX_INT4",
+    sanitizeResults([legit({ errors: Number.MAX_SAFE_INTEGER })], ROOM)[0].errors === MAX_INT4);
+  assert("errors 1e21 → MAX_INT4",
+    sanitizeResults([legit({ errors: 1e21 })], ROOM)[0].errors === MAX_INT4);
+  assert("errors MAX_INT4 preservado",
+    sanitizeResults([legit({ errors: MAX_INT4 })], ROOM)[0].errors === MAX_INT4);
+  assert("place 9e15 → null",
+    sanitizeResults([legit({ place: 9e15 })], ROOM)[0].place === null);
+  assert("place acima do teto de jogadores → null",
+    sanitizeResults([legit({ place: ABSOLUTE_MAX_PLAYERS + 1 })], ROOM)[0].place === null);
+  assert("place no teto de jogadores preservado",
+    sanitizeResults([legit({ place: ABSOLUTE_MAX_PLAYERS })], ROOM)[0].place === ABSOLUTE_MAX_PLAYERS);
 }
 
 console.log("\n── Tamanho do array limitado a room.max_players ─────────────────");
