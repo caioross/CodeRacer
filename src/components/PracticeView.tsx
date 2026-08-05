@@ -7,6 +7,7 @@ import { Logo } from "./Logo";
 import { MatrixRain } from "./MatrixRain";
 import { TypingCore } from "./TypingCore";
 import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
+import { exclusionFor, type PracticeRound } from "@/lib/practiceExclusion";
 import type { Snippet } from "@/lib/types";
 
 // Treino Livre (issue #25, fatia do epic #24): corrida solo sem sala, sem
@@ -32,6 +33,12 @@ export function PracticeView() {
   // Ignora respostas fora de ordem quando o jogador troca a config rápido.
   const fetchSeq = useRef(0);
 
+  // Último snippet ACEITO (#121): alimenta o `exclude` do próximo sorteio para
+  // "treinar de novo" não devolver o mesmo código. Em `useRef` de propósito —
+  // em state, entraria nas deps do `useCallback` abaixo, que é dependência do
+  // efeito de carga: identidade nova a cada load = loop infinito de fetch.
+  const prevRound = useRef<PracticeRound | null>(null);
+
   const loadSnippet = useCallback(async (lang: LangId, diff: Difficulty) => {
     const seq = ++fetchSeq.current;
     setLoading(true);
@@ -39,8 +46,10 @@ export function PracticeView() {
     setStartedAt(null);
     setFinishedAt(null);
     try {
+      const exclude = exclusionFor(prevRound.current, lang, diff);
       const res = await fetch(
-        `/api/snippet?language=${encodeURIComponent(lang)}&difficulty=${encodeURIComponent(diff)}`,
+        `/api/snippet?language=${encodeURIComponent(lang)}&difficulty=${encodeURIComponent(diff)}` +
+          (exclude ? `&exclude=${encodeURIComponent(exclude)}` : ""),
         { cache: "no-store" }
       );
       const json = await res.json().catch(() => ({}));
@@ -49,7 +58,11 @@ export function PracticeView() {
         setError(json?.error || "Não deu para sortear um snippet — tenta de novo.");
         setSnippet(null);
       } else {
-        setSnippet(json.snippet as Snippet);
+        const picked = json.snippet as Snippet;
+        // Só o ramo aceito grava — resposta fora de ordem não pode envenenar a
+        // memória (o `return` do guard acima já saiu antes daqui).
+        prevRound.current = { lang, diff, title: picked.title };
+        setSnippet(picked);
         setRound(r => r + 1);
       }
     } catch {

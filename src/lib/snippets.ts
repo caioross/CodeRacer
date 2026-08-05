@@ -3696,8 +3696,10 @@ function resolvePool(lang: string, diff: Difficulty): SnippetSeed[] {
  * WPM já memorizado indo direto ao ranking global. A memória é de UMA partida:
  * A→B→A continua possível, e é aceitável.
  *
- * O 3º parâmetro é opcional para o Treino Livre (`api/snippet/route.ts`) seguir
- * chamando com dois argumentos.
+ * O Treino Livre passou a excluir também (#121): `api/snippet/route.ts` repassa o
+ * `?exclude=` que o cliente manda quando o bucket não mudou (regra pura em
+ * `practiceExclusion.ts`). O 3º parâmetro segue opcional — chamador sem memória
+ * de partida anterior sorteia do pool cheio.
  */
 export function pickSnippet(
   language: string,
