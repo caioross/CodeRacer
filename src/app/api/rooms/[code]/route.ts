@@ -9,10 +9,12 @@ import {
   addKickedId,
   canKick,
   kickedListFull,
+  resetToLobbySpec,
   resolveDifficulty,
   resolveLang,
   roomUpdateOutcome,
   sanitizeResults,
+  startRaceSpec,
   ABSOLUTE_MAX_PLAYERS,
   type ResultRow,
   type RoomRow
@@ -37,10 +39,15 @@ async function applyRoomUpdate(
   sb: SupabaseClient,
   code: string,
   action: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  // Guarda de estado opcional (#131): quando presente, o filtro entra na PRÓPRIA
+  // escrita — quem decide se a transição vale é o banco, não uma leitura anterior.
+  guard?: { match: Record<string, unknown>; conflict: string }
 ): Promise<{ failed: NextResponse; row?: undefined } | { failed?: undefined; row: RoomRow }> {
-  const { data, error } = await sb.from("rooms").update(patch).eq("code", code).select("*");
-  const outcome = roomUpdateOutcome({ error, rows: data?.length });
+  let q = sb.from("rooms").update(patch).eq("code", code);
+  if (guard) q = q.match(guard.match);
+  const { data, error } = await q.select("*");
+  const outcome = roomUpdateOutcome({ error, rows: data?.length, conflict: guard?.conflict });
   if (!outcome.ok) {
     // Detalhe do banco fica no servidor; o cliente recebe copy neutra.
     if (error) console.error("[rooms:update]", action, error.message);
@@ -150,12 +157,12 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // (#115). Primeira partida da sala → `undefined` → sorteio normal.
       const snippet = pickSnippet(room.language, room.difficulty, room.snippet?.title);
       const startAt = new Date(Date.now() + COUNTDOWN_MS).toISOString();
-      const res = await applyRoomUpdate(sb, code, "start", {
-        status: "racing",
-        snippet,
-        start_at: startAt,
-        results: null
-      });
+      // A transição é condicional a `lobby` (#131): `start` numa sala em
+      // `racing`/`finished` não pode trocar o snippet nem zerar `results` de uma
+      // partida em andamento. A regra é pura e testada (`startRaceSpec`); aqui
+      // só há I/O — e o filtro vai junto do UPDATE, não numa checagem lida antes.
+      const spec = startRaceSpec(snippet, startAt);
+      const res = await applyRoomUpdate(sb, code, "start", spec.patch, spec);
       if (res.failed) return res.failed;
       await broadcastRoom(code, res.row);
       return NextResponse.json({ ok: true });
@@ -238,8 +245,10 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // conferem o `error` do update). Statements separados: o reset sempre vale.
       // Ordem importa: limpa os expulsos ANTES de anunciar o lobby, senão o
       // evento que devolve todo mundo ao lobby ainda carrega a lista velha.
-      // Best-effort: inerte enquanto a 0005 não estiver aplicada.
-      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code);
+      // Best-effort: inerte enquanto a 0005 não estiver aplicada. Carrega a mesma
+      // guarda da escrita principal (#131): sem ela, um `reset` forjado no meio da
+      // corrida ainda devolveria os expulsos à sala antes de tomar o 409.
+      await sb.from("rooms").update({ kicked_ids: [] }).eq("code", code).eq("status", "finished");
       // O reset em si, ao contrário da limpeza acima, precisa ser confirmado:
       // "jogar de novo" que falha em silêncio deixa a sala presa em `finished`.
       // `snippet` NÃO é zerado de propósito (#115): é a única memória de qual
@@ -248,11 +257,12 @@ export async function POST(req: Request, { params }: { params: { code: string } 
       // os jogadores na corrida que terminou — e o `start` o sobrescreve antes do
       // countdown, então ninguém antecipa o próximo alvo. Nenhuma tela deriva
       // fase de `snippet == null` (RoomView/Race/useRoom decidem por `status`).
-      const res = await applyRoomUpdate(sb, code, "reset", {
-        status: "lobby",
-        start_at: null,
-        results: null
-      });
+      // A transição é condicional a `finished` (#131): guardar só o `start` não
+      // fecharia o abuso — `reset` incondicional já mata a corrida em andamento e
+      // ainda deixa a sala em `lobby`, exatamente onde o `start` guardado passa.
+      // Mesmo desenho do `start`: a guarda vai no UPDATE, quem decide é o banco.
+      const spec = resetToLobbySpec();
+      const res = await applyRoomUpdate(sb, code, "reset", spec.patch, spec);
       if (res.failed) return res.failed;
       // A limpeza de `kicked_ids` acima não é anunciada por si: esta linha já
       // vem depois dela e carrega a lista zerada junto com o lobby.
