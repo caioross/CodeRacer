@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // nucleo: o deploy da casa roda `node .` sobre o server.js do standalone.
+  output: 'standalone',
   reactStrictMode: true,
   poweredByHeader: false,
   webpack: (config, { isServer }) => {
