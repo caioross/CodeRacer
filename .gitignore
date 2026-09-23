@@ -32,3 +32,7 @@ next-env.d.ts
 *.wav
 *.zip
 *.psd
+
+# bytecode de skills — nunca versionar
+__pycache__/
+*.pyc

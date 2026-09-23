@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"E:\\Projetos\\Jogos\\CodeRacer\\.agents\\guarda.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

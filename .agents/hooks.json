@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "guarda-da-frota": {
+      "enabled": true,
+      "events": {
+        "PreToolUse": [
+          {
+            "matcher": "run_command|execute_command|bash|shell|view_file|read_file",
+            "handler": {
+              "type": "command",
+              "command": "python \"E:\\Projetos\\Jogos\\CodeRacer\\.agents\\guarda.py\"",
+              "timeout": 15
+            }
+          }
+        ]
+      }
+    }
+  }
+}
