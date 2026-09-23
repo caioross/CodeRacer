@@ -64,6 +64,12 @@ Toda issue criada por agente tem: **1 prioridade + ≥1 área + acceptance crite
 
 ## §5 Reivindicação (claim)
 
+> **Atualizado em 2026-09-23 — leia `AGENTS.md` §A.** O claim deixou de ser a label e passou
+> a ser um compare-and-swap em `refs/frota/claims/issue-<N>`. A label `em-resolucao` continua,
+> mas como sinal para humano. Motivo: label não é mutex — a issue #34 ganhou duas branches de
+> dois agentes que se acharam donos ao mesmo tempo. O resto desta seção (elegibilidade, branch
+> órfã, nomes) continua valendo.
+
 Issue **elegível** = aberta, sem `em-resolucao`/`blocked`/`epic`/`decisao-dono` e sem PR aberta
 vinculada. Uma branch `auto/issue-<N>-*` remota **só** bloqueia se tiver **PR aberta vinculada**:
 o §8 proíbe apagar branch, então PR fechada sem merge deixaria a issue congelada para sempre
@@ -184,8 +190,8 @@ O **Engenheiro da Frota** lê a semana (diário #4, PRs/merges, Discussions, fal
 ## §13 Fontes de verdade
 
 1. `docs/UI-AAA-OVERHAUL.md` — spec de qualidade, roadmap (Parte VII), personas (§0.3).
-2. `.claude/skills/_INDICE_SKILLS.md` — mapa de skills do projeto.
-3. `.claude/skills/cr-fleet-ops/SKILL.md` + `references/github-orgaos.md` — receitas e IDs
+2. `.agents/skills/_INDICE_SKILLS.md` — mapa de skills do projeto.
+3. `.agents/skills/cr-fleet-ops/SKILL.md` + `references/github-orgaos.md` — receitas e IDs
    dos órgãos do GitHub (quadro, discussions, parecer, ICE).
 4. Issue #4 — Diário de Bordo · Discussion #5 — manifesto da frota · Project #30 — quadro.
 5. `README.md` — visão de produto.
