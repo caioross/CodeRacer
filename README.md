@@ -106,7 +106,7 @@ Variáveis de ambiente (copie `.env.example` → `.env.local` — e replique na 
 | `SUPABASE_URL` | URL do Supabase (servidor — API routes). |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Service role** (servidor — escreve salas/placar). **Nunca exponha no cliente.** |
 | `DATABASE_URL` | Connection string do Postgres (usada por `pnpm db:migrate`). |
-| `NEXT_PUBLIC_SITE_URL` | URL pública p/ SEO (canonical, Open Graph, sitemap). Sem barra no final. |
+| `NEXT_PUBLIC_SITE_URL` | **Opcional.** URL pública p/ SEO (canonical, Open Graph, sitemap). Sem barra no final. Na Vercel a origem vem do domínio de PRODUÇÃO do projeto (system env var da plataforma); defina só para sobrescrever (ex.: domínio próprio) — e só com a URL que realmente serve o site. Sem nenhuma das duas, o build na Vercel falha de propósito em vez de publicar um canonical `localhost`. |
 
 Scripts úteis: `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm db:migrate`.
 
@@ -291,8 +291,9 @@ O projeto vem com **SEO de produção** pronto:
 
 1. Importe o repo na [Vercel](https://vercel.com/new) — ela detecta o Next.js sozinha.
 2. Em **Settings → Environment Variables**, defina: `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e
-   `NEXT_PUBLIC_SITE_URL` (sua URL da Vercel).
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`.
+   `NEXT_PUBLIC_SITE_URL` é opcional se as System Environment Variables do projeto estiverem ligadas (o SEO usa o domínio de produção do projeto);
+   defina-a quando apontar um domínio próprio para o projeto.
 3. Rode `pnpm db:migrate` uma vez (local, com o `DATABASE_URL`) pra criar as tabelas.
 4. **Deploy!** Mande a URL pra galera e corram. 🏁
 
@@ -404,7 +405,7 @@ Environment variables (copy `.env.example` → `.env.local` — and mirror them 
 | `SUPABASE_URL` | Supabase URL (server — API routes). |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Service role** (server — writes rooms/leaderboard). **Never expose it.** |
 | `DATABASE_URL` | Postgres connection string (used by `pnpm db:migrate`). |
-| `NEXT_PUBLIC_SITE_URL` | Public URL for SEO (canonical, OG, sitemap). No trailing slash. |
+| `NEXT_PUBLIC_SITE_URL` | **Optional.** Public URL for SEO (canonical, OG, sitemap). No trailing slash. On Vercel the origin comes from the project PRODUCTION domain (platform system env var); set this only to override it (e.g. a custom domain) — and only with the origin that actually serves the site. With neither available, a Vercel build fails on purpose instead of shipping a `localhost` canonical. |
 
 Handy scripts: `pnpm typecheck` · `pnpm lint` · `pnpm db:migrate`.
 
@@ -457,7 +458,8 @@ Ephemeral rooms are `noindex`.
 
 **Deploy on Vercel** (native — the realtime layer is all Supabase, no standalone server): import the
 repo at [vercel.com/new](https://vercel.com/new) → set `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL`
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (`NEXT_PUBLIC_SITE_URL`
+is optional when the project System Environment Variables are on — the SEO origin is the project production domain unless you override it)
 → run `pnpm db:migrate` once to create the tables → deploy and share the URL. 🏁
 
 > 💡 Because multiplayer uses **Supabase Realtime** (not a custom WebSocket), it runs on Vercel's

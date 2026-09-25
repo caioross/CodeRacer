@@ -309,9 +309,9 @@ function ShareButton({ me }: { me: Player }) {
   }
 
   function onShare() {
-    // `window.location.origin` é a origem real do deploy; SITE.url depende de
-    // NEXT_PUBLIC_SITE_URL estar setada no build e cai num domínio que não é o
-    // de produção quando não está.
+    // `window.location.origin` é a origem exata que o jogador está usando —
+    // inclusive um domínio alternativo apontado para o mesmo deploy. `SITE.url`
+    // é resolvido em build (#117) e fica como default de contexto sem `window`.
     const url = window.location.origin;
     const text = buildShareText(me, url);
     if (typeof navigator.share === "function") {
