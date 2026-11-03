@@ -4,6 +4,17 @@ import { DIFFICULTIES, LANGUAGES, type Difficulty, type LangId } from "./languag
 
 export type RoomStatus = "lobby" | "racing" | "finished";
 
+// ─── Código da sala ───────────────────────────────────────────────────────────
+/** Alfabeto dos códigos de sala: maiúsculas e dígitos sem os ambíguos (I, O, 0, 1). */
+export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const ROOM_CODE_LENGTH = 6;
+const ROOM_CODE_RE = new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`);
+
+/** `true` se `x` tem o formato exato de um código gerado por `POST /api/rooms`. */
+export function isValidRoomCode(x: unknown): x is string {
+  return typeof x === "string" && ROOM_CODE_RE.test(x);
+}
+
 export interface RoomSnippet {
   title: string;
   code: string;
