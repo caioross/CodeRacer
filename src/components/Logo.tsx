@@ -14,7 +14,8 @@ export function Logo({
     sm: { text: "text-xl", icon: "text-lg" },
     md: { text: "text-3xl", icon: "text-2xl" },
     lg: { text: "text-5xl md:text-6xl", icon: "text-4xl md:text-5xl" },
-    xl: { text: "text-6xl md:text-8xl", icon: "text-5xl md:text-7xl" }
+    // xl cabia mal em 390 px (o "Racer" vazava da tela): começa menor no celular.
+    xl: { text: "text-5xl sm:text-6xl md:text-8xl", icon: "text-4xl sm:text-5xl md:text-7xl" }
   };
   const s = sizes[size];
   return (

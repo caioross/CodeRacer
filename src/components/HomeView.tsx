@@ -174,14 +174,16 @@ export function HomeView() {
       <ClickSpark />
 
       {/* top bar */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4">
+      <header className="relative z-10 flex items-center justify-between gap-2 px-4 sm:px-6 py-4">
         <Logo size="sm" />
-        <div className="flex items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <Link
             href="/leaderboard"
+            aria-label={t("common.ranking")}
             className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
           >
-            <Trophy className="size-3.5" /> {t("common.ranking")}
+            <Trophy className="size-3.5" />
+            <span className="hidden sm:inline">{t("common.ranking")}</span>
           </Link>
 
           {auth.available &&
@@ -221,7 +223,8 @@ export function HomeView() {
                   aria-label={t("home.signInAria")}
                   className="btn-secondary text-xs px-3 py-1.5"
                 >
-                  <GoogleIcon /> {t("home.signIn")}
+                  <GoogleIcon />
+                  <span className="hidden sm:inline">{t("home.signIn")}</span>
                 </button>
                 {/* Redundante para leitor de tela (já está no aria-label do botão). */}
                 <span
