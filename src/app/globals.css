@@ -261,3 +261,33 @@
   100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
 }
 .animate-ready-pulse { animation: cr-ready-pulse 2s ease-out infinite; }
+
+/* Marco de sequência de acertos (programa 253): o cartão "sequência" dá um pulo e
+   brilha quando cruza 25/50/100/200/400 acertos seguidos. Só transform + box-shadow
+   (compositor), disparado por troca de `key` — nenhum setState extra por tecla.
+   Sob prefers-reduced-motion a regra global zera a duração. */
+@keyframes cr-streak-pop {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.6); }
+  35% { transform: scale(1.08); box-shadow: 0 0 22px 2px rgba(168, 85, 247, 0.55); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+}
+.animate-streak-pop { animation: cr-streak-pop 520ms ease-out; }
+
+/* Confete do pódio/recorde: peças absolutas que caem e giram (transform/opacity). */
+@keyframes cr-confetti-fall {
+  0% { transform: translate3d(0, -12px, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--cr-dx, 0px), 240px, 0) rotate(var(--cr-rot, 540deg)); opacity: 0; }
+}
+.cr-confetti { position: absolute; top: 0; width: 7px; height: 11px; border-radius: 2px;
+  animation: cr-confetti-fall var(--cr-dur, 1600ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation-delay: var(--cr-delay, 0ms); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .cr-confetti { display: none; } }
+
+/* Interface em idiomas de escrita não latina: a JetBrains Mono só cobre o latim; o
+   texto de UI cai numa pilha de sistema com cobertura do script (o CÓDIGO segue mono). */
+:lang(ja) body { font-family: var(--font-jetbrains), "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Noto Sans JP", ui-monospace, monospace; }
+:lang(zh-Hans) body { font-family: var(--font-jetbrains), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", ui-monospace, monospace; }
+:lang(ko) body { font-family: var(--font-jetbrains), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", ui-monospace, monospace; }
+:lang(hi) body { font-family: var(--font-jetbrains), "Nirmala UI", "Kohinoor Devanagari", "Noto Sans Devanagari", ui-monospace, monospace; }
+:lang(ar) body { font-family: var(--font-jetbrains), "Segoe UI", "Geeza Pro", "Noto Sans Arabic", "Tahoma", ui-monospace, monospace; }
+:lang(ru) body { font-family: var(--font-jetbrains), "Segoe UI", "Roboto", "Noto Sans", ui-monospace, monospace; }

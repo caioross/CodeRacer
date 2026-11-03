@@ -110,3 +110,84 @@ export function playError() {
   osc.start(now);
   osc.stop(now + 0.12);
 }
+
+// ── Sons de evento (programa 253, nov/2026) ────────────────────────────────────────
+// Mesma filosofia: síntese na hora, zero arquivo, respeita o mudo. Nenhum destes roda
+// por tecla — só em transições (contagem, largada, chegada, pódio, marco de sequência).
+
+/** Uma nota curta com envelope ataque/queda. `type` e `gain` moldam o timbre. */
+function note(
+  c: AudioContext,
+  freq: number,
+  at: number,
+  len: number,
+  { type = "square", gain = 0.08 }: { type?: OscillatorType; gain?: number } = {}
+) {
+  if (!master) return;
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, at);
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(gain, at + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+  osc.connect(g).connect(master);
+  osc.start(at);
+  osc.stop(at + len + 0.02);
+}
+
+function withCtx(fn: (c: AudioContext, now: number) => void) {
+  loadPref();
+  if (muted) return;
+  const c = ensure();
+  if (!c || !master) return;
+  fn(c, c.currentTime);
+}
+
+/** Bipe da contagem regressiva (3, 2, 1). */
+export function playTick() {
+  withCtx((c, now) => note(c, 660, now, 0.12, { type: "square", gain: 0.06 }));
+}
+
+/** Largada: bipe agudo e mais longo, com uma quinta por baixo. */
+export function playGo() {
+  withCtx((c, now) => {
+    note(c, 1320, now, 0.32, { type: "square", gain: 0.07 });
+    note(c, 880, now, 0.32, { type: "triangle", gain: 0.06 });
+  });
+}
+
+/** Chegada (eu terminei): arpejo maior ascendente. */
+export function playFinish() {
+  withCtx((c, now) => {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) =>
+      note(c, f, now + i * 0.075, 0.22, { type: "triangle", gain: 0.08 })
+    );
+  });
+}
+
+/** Pódio: fanfarra curta (só para quem ficou entre os 3 primeiros). */
+export function playFanfare(place: 1 | 2 | 3 = 1) {
+  withCtx((c, now) => {
+    const base = place === 1 ? 1 : place === 2 ? 0.94 : 0.89;
+    const seq: [number, number, number][] = [
+      [523.25, 0, 0.14],
+      [523.25, 0.15, 0.14],
+      [523.25, 0.3, 0.14],
+      [698.46, 0.45, 0.5]
+    ];
+    for (const [f, t, len] of seq) {
+      note(c, f * base, now + t, len, { type: "square", gain: 0.05 });
+      note(c, (f * base) / 2, now + t, len, { type: "triangle", gain: 0.05 });
+    }
+  });
+}
+
+/** Marco de sequência de acertos (25, 50, 100…): "plim" que sobe com o nível. */
+export function playStreak(level: number) {
+  withCtx((c, now) => {
+    const f = 880 * Math.pow(2, Math.min(level, 6) / 12);
+    note(c, f, now, 0.09, { type: "sine", gain: 0.06 });
+    note(c, f * 1.5, now + 0.06, 0.14, { type: "sine", gain: 0.05 });
+  });
+}
