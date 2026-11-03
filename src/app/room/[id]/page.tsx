@@ -1,16 +1,25 @@
 import type { Metadata } from "next";
 import { RoomView } from "@/components/RoomView";
 import { ToastProvider } from "@/components/ui/Toast";
+import { getServerI18n } from "@/i18n/server";
 
 // Rooms are ephemeral and in-memory — keep them out of search indexes, but give
 // them a friendly per-room title for browser tabs and shared chat previews.
-export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+// #118: o robots.txt NÃO bloqueia mais /room/ — robô de unfurl (WhatsApp, Slack,
+// Discord, X) respeita robots e, bloqueado, o convite saía sem card. A página continua
+// fora do índice pelo `noindex` daqui; `follow` liberado para o card achar a imagem.
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const code = params.id.toUpperCase().slice(0, 6);
+  const { t } = await getServerI18n();
+  const title = t("meta.roomTitle", { code });
+  const description = t("meta.roomDescription", { code });
   return {
-    title: `Sala ${code} — entre na corrida`,
-    description: `Entre na sala ${code} e dispute quem digita o código mais rápido no CodeRacer.`,
-    robots: { index: false, follow: false },
-    alternates: { canonical: `/room/${code}` }
+    title,
+    description,
+    robots: { index: false, follow: true },
+    alternates: { canonical: `/room/${code}` },
+    openGraph: { title, description, url: `/room/${code}` },
+    twitter: { card: "summary_large_image", title, description, images: ["/opengraph-image"] }
   };
 }
 

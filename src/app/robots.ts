@@ -1,16 +1,18 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/site";
 
-// Ephemeral game rooms (/room/*) are intentionally kept out of the index —
-// they're transient, in-memory and have no lasting content to rank. /harness/* is
-// dev-only (renders 404 in production), so there's nothing there to crawl either.
+// #118: /room/ deixou de ser bloqueado aqui. Os robôs de prévia de link (WhatsApp,
+// Slack, Discord, X, Telegram) respeitam o robots.txt — bloqueado, o convite de sala
+// saía sem card. A sala continua FORA do índice pelo `noindex` da própria página
+// (room/[id]/page.tsx), que é o mecanismo certo para "pode ler, não indexe".
+// /harness/* é só de dev (404 em produção) e /api/ não tem o que indexar.
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/room/", "/harness/"]
+        disallow: ["/harness/", "/api/"]
       }
     ],
     sitemap: `${SITE.url}/sitemap.xml`,
