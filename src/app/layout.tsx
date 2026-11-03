@@ -2,9 +2,15 @@ import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SITE } from "@/lib/site";
+import { Providers } from "@/components/Providers";
+import { LOCALE_META } from "@/i18n/config";
+import { getServerI18n, languageAlternates, ogLocale } from "@/i18n/server";
 
 // Self-hosted via next/font — no render-blocking request to fonts.googleapis.com,
 // no layout shift, better Core Web Vitals (and therefore SEO).
+// Só `latin`: a fonte é a do CÓDIGO (sempre ASCII). Texto de interface em japonês,
+// chinês, coreano, cirílico, devanágari e árabe cai nas fontes do sistema pela pilha
+// de `fallback` + a regra `:lang()` do globals.css — sem baixar MBs de fonte CJK.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700", "800"],
@@ -13,57 +19,64 @@ const jetbrainsMono = JetBrains_Mono({
   fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"]
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE.url),
-  title: {
-    default: SITE.title.pt,
-    template: `%s · ${SITE.name}`
-  },
-  description: SITE.description.pt,
-  applicationName: SITE.name,
-  authors: [{ name: SITE.author.name, url: SITE.author.url }],
-  creator: SITE.author.name,
-  publisher: SITE.author.name,
-  keywords: [...SITE.keywords],
-  category: "games",
-  alternates: {
-    canonical: "/"
-  },
-  openGraph: {
-    type: "website",
-    locale: SITE.locale,
-    alternateLocale: SITE.altLocale,
-    url: SITE.url,
-    siteName: SITE.name,
-    title: SITE.title.pt,
-    description: SITE.description.pt
-    // social image is auto-detected from app/opengraph-image.tsx
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: SITE.title.pt,
-    description: SITE.descriptionShort.pt,
-    ...(SITE.twitter ? { creator: `@${SITE.twitter}`, site: `@${SITE.twitter}` } : {})
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+export async function generateMetadata(): Promise<Metadata> {
+  const { t, locale } = await getServerI18n();
+  const og = ogLocale(locale);
+  return {
+    metadataBase: new URL(SITE.url),
+    title: {
+      default: t("meta.title"),
+      template: `%s · ${SITE.name}`
+    },
+    description: t("meta.description"),
+    applicationName: SITE.name,
+    authors: [{ name: SITE.author.name, url: SITE.author.url }],
+    creator: SITE.author.name,
+    publisher: SITE.author.name,
+    keywords: [...SITE.keywords],
+    category: "games",
+    alternates: {
+      canonical: "/",
+      languages: languageAlternates("/")
+    },
+    openGraph: {
+      type: "website",
+      locale: og.locale,
+      alternateLocale: og.alternateLocale,
+      url: SITE.url,
+      siteName: SITE.name,
+      title: t("meta.title"),
+      description: t("meta.description")
+      // social image is auto-detected from app/opengraph-image.tsx
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: t("meta.title"),
+      description: t("meta.descriptionShort"),
+      // Sem rota twitter-image (ver o commit do EBUSY): o card do X usa a mesma imagem.
+      images: ["/opengraph-image"],
+      ...(SITE.twitter ? { creator: `@${SITE.twitter}`, site: `@${SITE.twitter}` } : {})
+    },
+    robots: {
       index: true,
       follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1
-    }
-  },
-  icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
-    shortcut: ["/favicon.svg"]
-    // apple-touch-icon is auto-injected from app/apple-icon.tsx
-  },
-  manifest: "/manifest.webmanifest",
-  formatDetection: { telephone: false, email: false, address: false }
-};
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1
+      }
+    },
+    icons: {
+      icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+      shortcut: ["/favicon.svg"]
+      // apple-touch-icon vem de app/apple-icon.png
+    },
+    manifest: "/manifest.webmanifest",
+    formatDetection: { telephone: false, email: false, address: false }
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -73,46 +86,52 @@ export const viewport: Viewport = {
   themeColor: SITE.themeColor
 };
 
-// Rich result for search engines: a free, browser-based multiplayer game.
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: SITE.name,
-  alternateName: "Code Racer",
-  url: SITE.url,
-  description: SITE.description.pt,
-  applicationCategory: "GameApplication",
-  operatingSystem: "Any (modern web browser)",
-  browserRequirements: "Requires JavaScript and WebSocket support",
-  inLanguage: ["pt-BR", "en"],
-  isAccessibleForFree: true,
-  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-  featureList: [
-    "Multiplayer typing race in real time",
-    "8 programming languages",
-    "Live WPM and accuracy metrics",
-    "Shareable room codes",
-    "Podium and in-room chat",
-    "No signup required"
-  ],
-  author: {
-    "@type": "Person",
-    name: SITE.author.name,
-    url: SITE.author.url
-  },
-  image: `${SITE.url}/opengraph-image`,
-  screenshot: `${SITE.url}/opengraph-image`
-};
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const { locale, messages, t } = await getServerI18n();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Rich result for search engines: a free, browser-based multiplayer game.
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: SITE.name,
+    alternateName: "Code Racer",
+    url: SITE.url,
+    description: t("meta.description"),
+    applicationCategory: "GameApplication",
+    operatingSystem: "Any (modern web browser)",
+    browserRequirements: "Requires JavaScript",
+    inLanguage: ["pt-BR", "en", "es", "fr", "de", "it", "ja", "zh-Hans", "ko", "ru", "hi", "ar"],
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    featureList: [
+      "Multiplayer typing race in real time",
+      `${SITE.codeLanguages} programming languages`,
+      "12 interface languages",
+      "Live WPM and accuracy metrics",
+      "Solo practice mode",
+      "Shareable room codes",
+      "Podium and in-room chat",
+      "No signup required"
+    ],
+    author: {
+      "@type": "Person",
+      name: SITE.author.name,
+      url: SITE.author.url
+    },
+    image: `${SITE.url}/opengraph-image`,
+    screenshot: `${SITE.url}/opengraph-image`
+  };
+
   return (
-    <html lang="pt-BR" className={`dark ${jetbrainsMono.variable}`}>
+    <html lang={locale} dir={LOCALE_META[locale].dir} className={`dark ${jetbrainsMono.variable}`}>
       <body>
-        {children}
+        <Providers locale={locale} messages={messages}>
+          {children}
+        </Providers>
         <script
           type="application/ld+json"
           // Static, trusted JSON — safe to inline for rich results.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
         />
       </body>
     </html>

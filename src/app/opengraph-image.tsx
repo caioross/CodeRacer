@@ -1,10 +1,10 @@
 import { ImageResponse } from "next/og";
-import { SITE } from "@/lib/site";
 
 // Edge runtime: @vercel/og embeds its font here (no Node fileURLToPath), so the
 // image builds and renders reliably across platforms.
 export const runtime = "edge";
-export const alt = SITE.ogImageAlt;
+// O card é um só (em inglês) para todos os idiomas: imagem social não varia por pedido.
+export const alt = "CodeRacer — multiplayer code-typing race, dark hacker theme with neon green";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

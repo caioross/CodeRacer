@@ -1,37 +1,22 @@
-// Central site/SEO config. Single source of truth for metadata, Open Graph,
-// JSON-LD, sitemap, robots and the PWA manifest.
+// Central site/SEO config. Single source of truth for the origin, author, theme and
+// keywords. Textos por idioma (título, descrição, tagline, alt do card) moram nos
+// dicionários de `src/i18n/messages/` (programa 253, nov/2026).
 //
 // The public URL is read from NEXT_PUBLIC_SITE_URL so it can be set per
 // environment (see .env.example). It must be an absolute URL with no trailing
 // slash — used to resolve canonical links and social images.
+//
+// Fallback (#117): o padrão antigo `https://coderacer.app` é um domínio de TERCEIRO
+// (responde 301 para um site Squarespace que não é do projeto) — canonical, og:image e
+// sitemap trabalhavam para ele. O padrão agora é o endereço público que a casa mantém.
 
-const RAW_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://coderacer.app";
+const RAW_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://coderacer.caiorossi.com";
 
 export const SITE = {
   name: "CodeRacer",
   shortName: "CodeRacer",
   /** Absolute origin, no trailing slash. */
   url: RAW_URL.replace(/\/+$/, ""),
-  /** Marketing one-liner (used in <title> template and OG). */
-  tagline: "race your friends, one keystroke at a time",
-  locale: "pt_BR",
-  altLocale: "en_US",
-
-  title: {
-    pt: "CodeRacer — corrida de digitação multiplayer para devs",
-    en: "CodeRacer — multiplayer code-typing race for developers"
-  },
-
-  description: {
-    pt: "Corrida de digitação multiplayer para programadores. Crie uma sala, mande o link pros amigos e dispute quem digita o snippet de código mais rápido — sem cadastro, sem firula. 8 linguagens, WPM e precisão em tempo real, pódio e chat.",
-    en: "Multiplayer typing race for programmers. Spin up a room, share the link and battle to type the code snippet fastest — no signup, no fluff. 8 languages, live WPM & accuracy, podium and chat."
-  },
-
-  /** Short description for cards/manifest (under ~160 chars). */
-  descriptionShort: {
-    pt: "Dispute com amigos quem digita código mais rápido. 8 linguagens, WPM em tempo real, sem cadastro.",
-    en: "Race friends to type code the fastest. 8 languages, live WPM, no signup."
-  },
 
   author: {
     name: "Caio",
@@ -46,20 +31,21 @@ export const SITE = {
 
   keywords: [
     "CodeRacer",
-    "corrida de digitação",
-    "digitação de código",
     "typing race",
     "code typing game",
     "multiplayer typing",
-    "jogo de digitação",
-    "jogo para programadores",
-    "teste de WPM",
     "WPM test",
-    "velocidade de digitação",
-    "typeracer para código",
-    "monkeytype multiplayer",
     "typing speed test",
-    "programação",
+    "typeracer for code",
+    "monkeytype multiplayer",
+    "corrida de digitação",
+    "digitação de código",
+    "jogo para programadores",
+    "juego de mecanografía",
+    "jeu de dactylographie",
+    "Tipptrainer",
+    "タイピングゲーム",
+    "打字游戏",
     "JavaScript",
     "TypeScript",
     "Python",
@@ -70,10 +56,8 @@ export const SITE = {
   themeColor: "#05060a",
   accentColor: "#00ff88",
 
-  ogImageAlt:
-    "CodeRacer — corrida de digitação de código multiplayer, tema dark hacker com neon verde",
-
-  languages: ["JavaScript", "TypeScript", "Python", "Java", "C#", "C++", "Go", "Rust"]
+  /** Contagem exibida em metadados; a lista real vive em `src/lib/languages.ts`. */
+  codeLanguages: 24
 } as const;
 
 export type SiteConfig = typeof SITE;
