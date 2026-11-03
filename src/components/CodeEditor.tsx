@@ -195,7 +195,7 @@ function CodeEditorImpl({
             <span className="size-2.5 rounded-full bg-neon-green/70" />
           </span>
           <span className="ml-2 text-text-muted">
-            {disabled ? t("typing.youFinished") : `digite.${language}`}
+            {disabled ? t("typing.youFinished") : `${t("typing.fileStem")}.${language}`}
           </span>
         </div>
         <div className="flex items-center gap-2">

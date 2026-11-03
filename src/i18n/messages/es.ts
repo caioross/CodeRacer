@@ -132,6 +132,7 @@ const es: Messages = {
     statErrorsTitle: "Teclas erróneas durante la carrera — incluye las que ya corregiste.",
     streak: "racha",
     youFinished: "// ¡terminaste!",
+    fileStem: "escribe",
     soundOff: "Silenciar",
     soundOn: "Activar sonido",
     soundIsOn: "Sonido: activado",

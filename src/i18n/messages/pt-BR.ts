@@ -137,6 +137,7 @@ const ptBR = {
     statErrorsTitle: "Teclas erradas digitadas ao longo da corrida — inclui as que você já corrigiu.",
     streak: "sequência",
     youFinished: "// você terminou!",
+    fileStem: "digite",
     soundOff: "Desligar som",
     soundOn: "Ligar som",
     soundIsOn: "Som: ligado",

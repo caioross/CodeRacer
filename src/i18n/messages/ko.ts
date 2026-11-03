@@ -129,6 +129,7 @@ const ko: Messages = {
     statErrorsTitle: "레이스 중 잘못 누른 키 — 이미 고친 것도 포함돼요.",
     streak: "연속",
     youFinished: "// 완주!",
+    fileStem: "입력",
     soundOff: "소리 끄기",
     soundOn: "소리 켜기",
     soundIsOn: "소리: 켜짐",

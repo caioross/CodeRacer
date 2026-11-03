@@ -36,7 +36,7 @@
 <a name="-português"></a>
 
 > **TL;DR** — Abra uma sala, mande o link pros amigos e dispute, em tempo real, quem digita o
-> snippet de código mais rápido (e com menos erro). **8 linguagens**, **WPM e precisão ao vivo**,
+> snippet de código mais rápido (e com menos erro). **24 linguagens**, **12 idiomas na interface**, **WPM e precisão ao vivo**,
 > **pódio**, **chat**, **placar global** (Supabase) e um visual *dark hacker* com chuva de Matrix.
 > Sem login, sem firula.
 
@@ -56,7 +56,10 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 | | Recurso | Detalhe |
 |:--:|:--|:--|
 | 🏁 | **Salas em tempo real** | Código de **6 letras** pra convidar — ou só mande o link. Até **30 jogadores**. |
-| 💻 | **8 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go e Rust — nos níveis **🟢 Júnior / 🔵 Pleno / 🟣 Sênior**. |
+| 💻 | **24 linguagens** | JavaScript, TypeScript, Python, Java, C#, C++, Go, Rust, SQL, Bash, Ruby, PHP, Kotlin, Swift, Lua, Dart, Scala, Elixir, Erlang, Haskell, Julia, Clojure, Fortran e COBOL — nos níveis **🟢 Júnior / 🔵 Pleno / 🟣 Sênior**. |
+| 🌍 | **12 idiomas** | Português, English, español, français, Deutsch, italiano, 日本語, 简体中文, 한국어, русский, हिन्दी e العربية (RTL). Detecta o idioma do navegador, aceita `?lang=xx` em qualquer link e tem seletor no topo. |
+| 🏋️ | **Treino Livre** | `/practice`: corrida solo sem sala, com **recorde pessoal** por linguagem e nível. |
+| 🔊 | **Som sintetizado** | Tecla, erro, contagem, largada, chegada, pódio e marcos de **sequência de acertos** — tudo Web Audio, zero arquivo. |
 | 📊 | **Métricas ao vivo** | **WPM**, **precisão**, **erros** e progresso por jogador, atualizados a cada tecla. |
 | 🏆 | **Pódio** | Ouro/prata/bronze ao final + classificação completa com tempo. O líder reinicia a partida. |
 | 🌍 | **Placar global** | Toda partida terminada é salva no **Supabase** — ranking de recorde de WPM por jogador em `/leaderboard`. |
@@ -64,7 +67,7 @@ Supabase** pra alimentar um **placar global** — dá pra ver quem é o dev mais
 | 🔑 | **Login com Google** *(opcional)* | Entre com o Google p/ usar seu **nome e avatar** — ou jogue como convidado, do mesmo jeito. |
 | 🌧️ | **Visual dark hacker** | Tema neon, *grid* de fundo e **MatrixRain** opcional. Respeita `prefers-reduced-motion`. |
 | 🚫 | **Anti-trapaça** | **Paste desabilitado** no input; backspace é permitido, mas só acerto *forward* conta. |
-| 📱 | **PWA-ready** | Manifest, ícones e *theme-color* — dá pra "instalar" no celular. |
+| 📱 | **PWA-ready** | Manifest no idioma, ícones PNG 192/512 + *maskable* e *theme-color* — dá pra "instalar" no celular. |
 
 ### 🕹️ Como jogar
 
@@ -287,6 +290,15 @@ O projeto vem com **SEO de produção** pronto:
 - ✅ **Fonte self-hosted** via `next/font` — sem request render-blocking, melhor *Core Web Vitals*.
 - ✅ Salas (`/room/*`) marcadas como **`noindex`** (conteúdo efêmero não polui o índice).
 
+**Onde está no ar:** `https://coderacer.caiorossi.com` (servidor da casa: Next standalone + Postgres +
+PostgREST próprios). O deploy antigo da Vercel (`code-racer-three.vercel.app`) apontava para um projeto
+Supabase que foi apagado — lá só o Treino Livre funciona. `NEXT_PUBLIC_SITE_URL` define o domínio do
+canonical/OG; sem ela, o padrão é o da casa.
+
+**Idiomas:** os dicionários ficam em `src/i18n/messages/<idioma>.ts` (o `pt-BR.ts` é a origem; o
+TypeScript e `src/i18n/messages.test.ts` acusam chave, placeholder ou plural faltando). Ordem de
+escolha: `?lang=` → cookie `cr_lang` → `Accept-Language` → inglês.
+
 **Deploy na Vercel** (roda nativo — o tempo real é todo Supabase, sem servidor próprio):
 
 1. Importe o repo na [Vercel](https://vercel.com/new) — ela detecta o Next.js sozinha.
@@ -309,8 +321,11 @@ O projeto vem com **SEO de produção** pronto:
 
 ### 🗺️ Roadmap
 
-- [ ] Persistência opcional (Supabase / SQLite) para histórico de partidas
-- [ ] Modo solo contra **fantasmas** (replay de partidas)
+- [x] Interface em 12 idiomas (nov/2026)
+- [x] Treino Livre com recorde pessoal
+- [ ] Tempo real próprio no servidor da casa (sem Supabase Realtime)
+- [ ] Modo solo contra **fantasmas** (replay do seu melhor run) e bots com WPM-alvo
+- [ ] Snippets com identificadores em inglês para quem não lê português
 - [ ] Modo **"code review"** — corrigir bugs em vez de só digitar
 - [ ] Voice chat (WebRTC) e tema claro
 - [ ] Mais snippets via PR da comunidade
@@ -337,7 +352,7 @@ Distribuído sob a licença **MIT**. Veja [`LICENSE`](./LICENSE).
 <a name="-english"></a>
 
 > **TL;DR** — Spin up a room, share the link, and race in real time to type the code snippet
-> fastest (with the fewest errors). **8 languages**, **live WPM & accuracy**, a **podium**, **chat**
+> fastest (with the fewest errors). **24 languages**, **12 UI languages**, **live WPM & accuracy**, a **podium**, **chat**
 > and a *dark-hacker* look with Matrix rain. No login, no fluff.
 
 ### ⚡ What it is
@@ -355,7 +370,10 @@ signup, no friction: just create and play.
 | | Feature | Detail |
 |:--:|:--|:--|
 | 🏁 | **Real-time rooms** | **6-letter** invite code — or just share the link. Up to **30 players**. |
-| 💻 | **8 languages** | JavaScript, TypeScript, Python, Java, C#, C++, Go and Rust — in **easy / medium / hard**. |
+| 💻 | **24 languages** | JavaScript, TypeScript, Python, Java, C#, C++, Go, Rust, SQL, Bash, Ruby, PHP, Kotlin, Swift, Lua, Dart, Scala, Elixir, Erlang, Haskell, Julia, Clojure, Fortran and COBOL — **Junior / Mid / Senior**. |
+| 🌍 | **12 UI languages** | Portuguese, English, Spanish, French, German, Italian, Japanese, Simplified Chinese, Korean, Russian, Hindi and Arabic (RTL). Browser detection, `?lang=xx` on any link and a header switcher. |
+| 🏋️ | **Free practice** | `/practice`: solo run with no room, with a **personal best** per language and level. |
+| 🔊 | **Synth sound** | Keys, mistakes, countdown, start, finish, podium and **streak** milestones — all Web Audio, zero files. |
 | 📊 | **Live metrics** | **WPM**, **accuracy**, **errors** and per-player progress, updated on every keystroke. |
 | 🏆 | **Podium** | Gold/silver/bronze at the end + full standings with time. The leader restarts the match. |
 | 🌍 | **Global leaderboard** | Every finished match is saved to **Supabase** — a per-player best-WPM ranking at `/leaderboard`. |
@@ -363,7 +381,7 @@ signup, no friction: just create and play.
 | 🔑 | **Google login** *(optional)* | Sign in with Google to use your **name and avatar** — or just play as a guest. |
 | 🌧️ | **Dark-hacker look** | Neon theme, background grid and optional **MatrixRain**. Honors `prefers-reduced-motion`. |
 | 🚫 | **Anti-cheat** | **Paste disabled** in the input; backspace allowed, but only *forward* hits count. |
-| 📱 | **PWA-ready** | Manifest, icons and theme-color — installable on mobile. |
+| 📱 | **PWA-ready** | Localized manifest, 192/512 + maskable PNG icons and theme-color — installable on mobile. |
 
 ### 🕹️ How to play
 
@@ -455,6 +473,9 @@ The project ships with **production-grade SEO**: full Open Graph + Twitter metad
 `robots.txt`, a PWA `manifest`, and a self-hosted font via `next/font` for better Core Web Vitals.
 Ephemeral rooms are `noindex`.
 
+**Live at** `https://coderacer.caiorossi.com` (home server: Next standalone + its own Postgres and PostgREST).
+The old Vercel deploy points to a deleted Supabase project — only free practice works there.
+
 **Deploy on Vercel** (native — the realtime layer is all Supabase, no standalone server): import the
 repo at [vercel.com/new](https://vercel.com/new) → set `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL`
@@ -472,8 +493,11 @@ rooms + leaderboard · deployed on **Vercel**. Helpers: `nanoid`, `clsx`, `tailw
 
 ### 🗺️ Roadmap
 
-- [ ] Optional persistence (Supabase / SQLite) for match history
-- [ ] Solo mode vs **ghosts** (match replays)
+- [x] 12 UI languages (Nov 2026)
+- [x] Free practice with personal best
+- [ ] Self-hosted realtime on the home server (no Supabase Realtime)
+- [ ] Solo mode vs **ghosts** (your best run) and target-WPM bots
+- [ ] Snippets with English identifiers
 - [ ] **"Code review"** mode — fix bugs instead of just typing
 - [ ] Voice chat (WebRTC) and a light theme
 - [ ] More snippets via community PRs

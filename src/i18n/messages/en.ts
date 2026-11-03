@@ -132,6 +132,7 @@ const en: Messages = {
     statErrorsTitle: "Wrong keys typed during the race — including the ones you already fixed.",
     streak: "streak",
     youFinished: "// you finished!",
+    fileStem: "type",
     soundOff: "Mute sound",
     soundOn: "Unmute sound",
     soundIsOn: "Sound: on",

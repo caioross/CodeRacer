@@ -132,6 +132,7 @@ const fr: Messages = {
     statErrorsTitle: "Touches erronées pendant la course — y compris celles déjà corrigées.",
     streak: "série",
     youFinished: "// tu as fini !",
+    fileStem: "tape",
     soundOff: "Couper le son",
     soundOn: "Activer le son",
     soundIsOn: "Son : activé",

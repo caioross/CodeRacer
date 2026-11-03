@@ -132,6 +132,7 @@ const it: Messages = {
     statErrorsTitle: "Tasti sbagliati durante la gara — compresi quelli già corretti.",
     streak: "serie",
     youFinished: "// hai finito!",
+    fileStem: "scrivi",
     soundOff: "Disattiva audio",
     soundOn: "Attiva audio",
     soundIsOn: "Audio: attivo",

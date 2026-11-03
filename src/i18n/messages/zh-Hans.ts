@@ -128,6 +128,7 @@ const zhHans: Messages = {
     statErrorsTitle: "比赛中按错的键 — 包括你已经改正的。",
     streak: "连击",
     youFinished: "// 你完成了！",
+    fileStem: "输入",
     soundOff: "静音",
     soundOn: "打开声音",
     soundIsOn: "声音：开",

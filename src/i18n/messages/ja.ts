@@ -131,6 +131,7 @@ const ja: Messages = {
     statErrorsTitle: "レース中に打ち間違えたキー — 修正済みのものも含みます。",
     streak: "連続",
     youFinished: "// ゴール！",
+    fileStem: "入力",
     soundOff: "ミュート",
     soundOn: "サウンドをオン",
     soundIsOn: "サウンド：オン",

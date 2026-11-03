@@ -130,6 +130,7 @@ const hi: Messages = {
     statErrorsTitle: "रेस में दबाई गई गलत कीज़ — जिन्हें आपने ठीक कर दिया वे भी शामिल।",
     streak: "लगातार",
     youFinished: "// आपने पूरा कर लिया!",
+    fileStem: "टाइप",
     soundOff: "आवाज़ बंद करें",
     soundOn: "आवाज़ चालू करें",
     soundIsOn: "आवाज़: चालू",

@@ -131,6 +131,7 @@ const ru: Messages = {
     statErrorsTitle: "Неверные нажатия за гонку — включая уже исправленные.",
     streak: "серия",
     youFinished: "// финиш!",
+    fileStem: "набери",
     soundOff: "Выключить звук",
     soundOn: "Включить звук",
     soundIsOn: "Звук: вкл.",

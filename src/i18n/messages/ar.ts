@@ -136,6 +136,7 @@ const ar: Messages = {
     statErrorsTitle: "المفاتيح الخاطئة خلال السباق — بما فيها ما صحّحته.",
     streak: "متتالية",
     youFinished: "// أنهيت السباق!",
+    fileStem: "اكتب",
     soundOff: "كتم الصوت",
     soundOn: "تشغيل الصوت",
     soundIsOn: "الصوت: مُشغَّل",

@@ -132,6 +132,7 @@ const de: Messages = {
     statErrorsTitle: "Falsche Tasten im Rennen — auch die, die du schon korrigiert hast.",
     streak: "Serie",
     youFinished: "// du bist im Ziel!",
+    fileStem: "tippe",
     soundOff: "Ton aus",
     soundOn: "Ton an",
     soundIsOn: "Ton: an",
