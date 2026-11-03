@@ -72,15 +72,15 @@ export default function OpengraphImage() {
         {/* tagline — satori requires display:flex on any multi-child element */}
         <div style={{ display: "flex", marginTop: 16, fontSize: 36, color: "#9aa4b2", maxWidth: 1000 }}>
           <span style={{ color: green, marginRight: 10 }}>//</span>
-          <span>quem digita o código mais rápido, vence.</span>
+          <span>type real code. fastest fingers win.</span>
         </div>
 
         {/* chips */}
         <div style={{ display: "flex", gap: 16, marginTop: 36 }}>
           {[
-            { t: "tempo real", c: green },
+            { t: "real-time", c: green },
             { t: "multiplayer", c: cyan },
-            { t: "8 linguagens", c: violet }
+            { t: "24 code languages", c: violet }
           ].map(chip => (
             <div
               key={chip.t}
@@ -97,6 +97,11 @@ export default function OpengraphImage() {
               {chip.t}
             </div>
           ))}
+        </div>
+
+        {/* idiomas da interface — só latim: o satori do edge não traz fonte CJK */}
+        <div style={{ display: "flex", marginTop: 22, fontSize: 22, color: "#7d8590", letterSpacing: 2 }}>
+          PT · EN · ES · FR · DE · IT · JA · ZH · KO · RU · HI · AR
         </div>
 
         {/* race track */}
