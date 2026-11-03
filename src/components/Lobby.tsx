@@ -77,7 +77,7 @@ export function Lobby({
           <div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                <span className="text-neon-green">// </span>lobby
+                <span className="text-neon-green">{"// "}</span>lobby
                 <span className="text-text-dim text-base ml-2">
                   {room.players.length}/{room.settings.maxPlayers} jogadores
                 </span>

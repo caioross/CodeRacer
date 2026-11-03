@@ -53,7 +53,7 @@ export function RaceTrack({
       }
     >
       <div className="flex items-center justify-between mb-2 md:mb-3">
-        <span className="label">// posição em tempo real</span>
+        <span className="label">{"// posição em tempo real"}</span>
         <span className="text-[10px] text-text-dim">
           {doneCount}/{sorted.length} terminaram
         </span>

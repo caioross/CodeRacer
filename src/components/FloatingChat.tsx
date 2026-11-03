@@ -63,7 +63,7 @@ export function FloatingChat({
               >
                 {isSystem ? (
                   <span className="inline-block rounded-full border border-bg-line bg-bg-card/80 px-3 py-1 text-[11px] font-mono italic text-text-dim backdrop-blur">
-                    // {m.text}
+                    {"// "}{m.text}
                   </span>
                 ) : (
                   <span

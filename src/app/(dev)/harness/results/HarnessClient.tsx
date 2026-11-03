@@ -32,7 +32,7 @@ export function HarnessClient({
       <main className="mx-auto max-w-6xl px-4 py-6 space-y-5">
         <header className="card p-4 space-y-3">
           <div>
-            <span className="label">// harness de dev — telas pós-corrida</span>
+            <span className="label">{"// harness de dev — telas pós-corrida"}</span>
             <p className="text-xs text-text-muted font-mono mt-1">
               Dados sintéticos, sem Supabase/Realtime. Não existe em produção.
             </p>
@@ -60,7 +60,7 @@ export function HarnessClient({
             href={`/harness/results?n=${active}${isLeader ? "&leader=0" : ""}`}
             className="inline-block text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
           >
-            líder: <span className="text-text">{isLeader ? "sim" : "não"}</span> // alternar
+            líder: <span className="text-text">{isLeader ? "sim" : "não"}</span> {"// alternar"}
           </Link>
         </header>
 

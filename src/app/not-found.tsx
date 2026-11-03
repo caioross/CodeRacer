@@ -18,7 +18,7 @@ export default function NotFound() {
           <span className="text-neon-red">Error:</span> rota não encontrada
         </p>
         <p className="mt-2 text-text-muted text-sm font-mono">
-          <span className="text-neon-green">// </span>
+          <span className="text-neon-green">{"// "}</span>
           essa sala não existe, expirou ou o link veio torto.
         </p>
 

@@ -71,7 +71,7 @@ export default function OpengraphImage() {
 
         {/* tagline — satori requires display:flex on any multi-child element */}
         <div style={{ display: "flex", marginTop: 16, fontSize: 36, color: "#9aa4b2", maxWidth: 1000 }}>
-          <span style={{ color: green, marginRight: 10 }}>//</span>
+          <span style={{ color: green, marginRight: 10 }}>{"//"}</span>
           <span>type real code. fastest fingers win.</span>
         </div>
 

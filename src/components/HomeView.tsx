@@ -268,7 +268,7 @@ export function HomeView() {
             transition={{ delay: 0.25, duration: dur.slow, ease: ease.outExpo }}
             className="mt-6 text-text-muted text-base md:text-lg max-w-2xl mx-auto text-balance"
           >
-            <span className="text-neon-green">// </span>
+            <span className="text-neon-green">{"// "}</span>
             Digite código de verdade — treine sozinho ou crie uma sala e chame os amigos.
             Quem for mais rápido leva. Sem cadastro, sem firula.
           </motion.p>
@@ -316,7 +316,7 @@ export function HomeView() {
                 {/* Cobre o mobile, onde o "opcional" do header fica escondido
                     (`hidden sm:inline`): aqui é onde o jogador de fato age. */}
                 <p className="mt-1.5 text-[11px] font-mono text-text-dim">
-                  <span className="text-neon-green">// </span>
+                  <span className="text-neon-green">{"// "}</span>
                   é só o nick — sem conta, sem e-mail
                 </p>
               </div>

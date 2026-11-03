@@ -105,7 +105,7 @@ export function Results({
         {/* full table */}
         <div className="card overflow-hidden">
           <div className="px-4 py-2 border-b border-bg-line">
-            <span className="label">// classificação completa</span>
+            <span className="label">{"// classificação completa"}</span>
           </div>
           <table className="w-full text-sm font-mono">
             <thead>
@@ -150,7 +150,7 @@ export function Results({
               </motion.button>
             ) : (
               <div className="text-text-muted text-sm font-mono">
-                <span className="animate-pulse">// aguardando líder reiniciar...</span>
+                <span className="animate-pulse">{"// aguardando líder reiniciar..."}</span>
               </div>
             )}
             {me && <ShareButton me={me} />}
@@ -185,7 +185,7 @@ function EmptyPodium() {
     <div className="card max-w-md mx-auto p-6 text-center">
       <div className="text-4xl mb-2">🏁</div>
       <div className="text-sm font-mono text-text-muted">
-        // ninguém terminou esta corrida
+        {"// ninguém terminou esta corrida"}
       </div>
     </div>
   );
@@ -360,7 +360,7 @@ function PlayerRow({
       <td className="px-2 py-2 font-medium" style={{ color: player.color }}>
         {player.name}{isMe && " (você)"}
         {!player.finishedAt && (
-          <span className="text-text-dim text-xs ml-2">// não terminou</span>
+          <span className="text-text-dim text-xs ml-2">{"// não terminou"}</span>
         )}
       </td>
       <td className="px-2 py-2 text-right">{Math.round(player.wpm)}</td>

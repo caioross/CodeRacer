@@ -28,7 +28,7 @@ export function HarnessClient({ scenario }: { scenario?: string }) {
     <ToastProvider>
       <main className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-6">
         <header className="card mb-4 hidden p-4 md:block">
-          <span className="label">// harness de dev — corrida</span>
+          <span className="label">{"// harness de dev — corrida"}</span>
           <p className="mt-1 font-mono text-xs text-text-muted">
             Dados sintéticos, sem Supabase/Realtime. Não existe em produção.
           </p>

@@ -29,7 +29,7 @@ export default function Error({
         </h1>
 
         <p className="mt-4 text-text-muted text-sm font-mono">
-          <span className="text-neon-green">// </span>
+          <span className="text-neon-green">{"// "}</span>
           um erro inesperado tirou você da corrida. tenta de novo?
         </p>
 

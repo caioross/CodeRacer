@@ -216,7 +216,7 @@ function TypingCoreImpl({
           alvo e o editor quando o teclado virtual está aberto. */}
       <div className="card p-3 md:p-4">
         <div className="flex items-center gap-2 mb-2 md:mb-3">
-          <span className="label">// suas estatísticas</span>
+          <span className="label">{"// suas estatísticas"}</span>
           <span className="text-[10px] text-text-dim ml-auto">
             tempo {(elapsedMs / 1000).toFixed(1)}s
           </span>

@@ -37,7 +37,7 @@ export function SpectatorView({
           </div>
           <p className="text-sm text-text mt-1 font-mono">Você entrou como espectador.</p>
           <p className="text-xs text-text-muted mt-1 font-mono">
-            // assim que esta rodada terminar você participa automaticamente da próxima
+            {"// assim que esta rodada terminar você participa automaticamente da próxima"}
           </p>
         </div>
       </motion.div>

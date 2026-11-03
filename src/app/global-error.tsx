@@ -25,7 +25,7 @@ export default function GlobalError({
           <div style={{ fontSize: 40, fontWeight: 800, color: "#00ff88" }}>{">_"}</div>
           <h1 style={{ fontSize: 22, marginTop: 12 }}>o CodeRacer travou feio</h1>
           <p style={{ color: "#7d8590", fontSize: 14, marginTop: 8 }}>
-            // recarregue para voltar à pista
+            {"// recarregue para voltar à pista"}
           </p>
           <button
             onClick={reset}

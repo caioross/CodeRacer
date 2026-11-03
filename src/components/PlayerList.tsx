@@ -15,7 +15,7 @@ export function PlayerList({
   return (
     <div className="card">
       <div className="flex items-center justify-between px-3 py-2 border-b border-bg-line">
-        <span className="label">// jogadores</span>
+        <span className="label">{"// jogadores"}</span>
         <span className="text-[10px] text-text-dim">{players.length}</span>
       </div>
       <ul className="divide-y divide-bg-line/60">

@@ -30,7 +30,7 @@ export function Chat({
   return (
     <div className="card flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-bg-line">
-        <span className="label">// chat</span>
+        <span className="label">{"// chat"}</span>
         <span className="text-[10px] text-text-dim">{messages.length} msgs</span>
       </div>
       {/* Altura limitada + rolagem interna (issue #70): sem um teto, o chat cresce
@@ -57,7 +57,7 @@ export function Chat({
                 )}
               >
                 {isSystem ? (
-                  <span>// {m.text}</span>
+                  <span>{"// "}{m.text}</span>
                 ) : (
                   <span>
                     <span

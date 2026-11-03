@@ -117,7 +117,7 @@ export function PracticeView() {
             Treino Livre
           </h1>
           <p className="text-xs font-mono text-text-muted">
-            <span className="text-neon-green">// </span>
+            <span className="text-neon-green">{"// "}</span>
             só você e o código — o cronômetro dispara na primeira tecla
           </p>
         </div>
@@ -172,7 +172,7 @@ export function PracticeView() {
         {done && (
           <div className="card neon-border p-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="label">// treino concluído</span>
+              <span className="label">{"// treino concluído"}</span>
               <span className="inline-flex items-center gap-1.5 font-mono text-sm text-neon-green">
                 <Zap className="size-3.5" /> {stats.wpm} WPM
               </span>

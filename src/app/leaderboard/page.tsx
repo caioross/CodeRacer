@@ -59,7 +59,7 @@ export default async function LeaderboardPage() {
             </h1>
           </div>
           <p className="mt-3 text-text-muted text-sm font-mono">
-            <span className="text-neon-green">// </span>
+            <span className="text-neon-green">{"// "}</span>
             os programadores que digitam código mais rápido — recorde de WPM por jogador.
           </p>
         </div>
@@ -92,7 +92,7 @@ export default async function LeaderboardPage() {
             <section className="card overflow-hidden">
               <div className="px-4 py-3 border-b border-bg-line flex items-center gap-2">
                 <Crown className="size-4 text-neon-amber" />
-                <span className="label">// melhores WPM</span>
+                <span className="label">{"// melhores WPM"}</span>
               </div>
               <table className="w-full text-sm font-mono">
                 <thead>
@@ -140,7 +140,7 @@ export default async function LeaderboardPage() {
             <aside className="space-y-3">
               <div className="flex items-center gap-2">
                 <Target className="size-4 text-neon-cyan" />
-                <span className="label">// partidas recentes</span>
+                <span className="label">{"// partidas recentes"}</span>
               </div>
               {matches.length === 0 ? (
                 <div className="card p-4 text-text-muted text-sm">nenhuma ainda</div>
