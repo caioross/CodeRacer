@@ -276,6 +276,34 @@ sequenceDiagram
 
 > Salas vazias somem por inatividade; se o líder sai, o próximo jogador assume (eleição via presence).
 
+#### Tempo real próprio (sem Supabase Realtime)
+
+Para servidor que tem Postgres + PostgREST (`/rest/v1`) mas **não** tem o Realtime do Supabase
+(o deploy da casa), o app traz um transporte embutido: um hub em memória no próprio processo
+Next (`src/lib/realtime/hub.ts`), com stream SSE `GET /api/rt/<topic>` e `POST /api/rt/<topic>`
+para broadcast/track/untrack/heartbeat. Presence, broadcast e `postgres_changes` chegam ao
+`useRoom` no mesmo formato do supabase-js — nada de lógica de jogo muda.
+
+```bash
+NEXT_PUBLIC_REALTIME=local pnpm build   # embutida no build: defina ANTES do build
+NEXT_PUBLIC_REALTIME=local node .next/standalone/server.js
+```
+
+- Padrão é `supabase` (sem a variável, tudo como antes; as rotas `/api/rt` respondem 404).
+- Tetos no servidor: payload ≤ 4 KB; por conexão, `progress` ≤ 20/s (a mensagem final tem
+  balde próprio), `chat` ≤ 2/s, `ready`/`vote` ≤ 5/s; até `ABSOLUTE_MAX_PLAYERS + 10` conexões
+  por sala; sem heartbeat por 30 s a conexão cai. Stream só abre para sala que existe no banco.
+- Proxy na frente: o stream é `text/event-stream` com `cache-control: no-cache, no-transform` e
+  `x-accel-buffering: no` — o Caddy e o Cloudflare Tunnel repassam sem bufferizar.
+- **Limitações:** exige **processo único e de longa duração** — o estado das salas vive na
+  memória dele; duas réplicas seriam duas salas diferentes com o mesmo código, e reiniciar o
+  processo derruba as conexões (os clientes reconectam sozinhos; o que estava no ar se perde,
+  como num broadcast do Supabase). **Não serve para Vercel/serverless.** Sem autenticação além
+  da do Supabase: o `conn` secreto do stream impede um cliente de falar por outra conexão, mas
+  qualquer um com o código da sala entra nela, como no canal público do Supabase.
+- Prova de ponta a ponta: `scripts/e2e-local-multiplayer.py` (dois navegadores jogando uma
+  partida inteira contra o app no ar).
+
 ### 🌐 SEO & Deploy
 
 O projeto vem com **SEO de produção** pronto:
