@@ -4,6 +4,10 @@ const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   poweredByHeader: false,
+  // O app não usa `next/image`. Desligar o otimizador tira do ar o endpoint
+  // `/_next/image`, que é a superfície dos CVEs críticos de RCE da linha 14
+  // (Image Optimization com AVIF/SVG) só corrigidos na 15.5.x.
+  images: { unoptimized: true },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // O build do ammo.js vem do emscripten e referencia `fs`/`path` para o
