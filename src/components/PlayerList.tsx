@@ -2,6 +2,7 @@
 
 import { Crown, Wifi } from "lucide-react";
 import type { Player } from "@/lib/types";
+import { useI18n } from "@/i18n/client";
 
 export function PlayerList({
   players,
@@ -12,10 +13,11 @@ export function PlayerList({
   leaderId: string;
   meId: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="card">
       <div className="flex items-center justify-between px-3 py-2 border-b border-bg-line">
-        <span className="label">{"// jogadores"}</span>
+        <span className="label">{t("players.title")}</span>
         <span className="text-[10px] text-text-dim">{players.length}</span>
       </div>
       <ul className="divide-y divide-bg-line/60">
@@ -44,13 +46,13 @@ export function PlayerList({
             <span className="flex-1 truncate" style={{ color: p.color }}>
               {p.name}
               {p.id === meId && (
-                <span className="text-text-dim ml-1 text-xs">(você)</span>
+                <span className="text-text-dim ms-1 text-xs">{t("common.youWord")}</span>
               )}
             </span>
             {p.id === leaderId && (
               <Crown
                 className="size-3.5 text-neon-amber"
-                aria-label="líder"
+                aria-label={t("common.leader")}
               />
             )}
             <Wifi className="size-3.5 text-neon-green" />

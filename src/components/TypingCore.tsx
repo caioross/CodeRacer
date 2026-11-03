@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlarmClock, Target, Timer, Zap } from "lucide-react";
+import { AlarmClock, Flame, Target, Timer, Zap } from "lucide-react";
 import { CodeDisplay } from "./CodeDisplay";
 import { CodeEditor } from "./CodeEditor";
 import {
@@ -11,6 +11,12 @@ import {
   computeAccuracy,
   computeProgress
 } from "@/lib/metrics";
+import { useI18n } from "@/i18n/client";
+import { playFinish, playStreak } from "@/lib/sound";
+
+// Marcos da sequência de acertos ("juice", programa 253): ao cruzar um deles toca um
+// "plim" e o cartão pulsa. Tudo em refs — nenhum setState novo por tecla.
+export const STREAK_MILESTONES = [25, 50, 100, 200, 400, 800] as const;
 
 // Desistência automática por inatividade (#65) — só no multiplayer (`idleForfeit`).
 // Sem digitar por IDLE_WARN_MS, abre um aviso com contagem de FORFEIT_MS; qualquer
@@ -58,6 +64,7 @@ function TypingCoreImpl({
 }) {
   const iFinished = finishedAt != null;
   const reduced = useReducedMotion();
+  const { t } = useI18n();
 
   // Inatividade (#65): epoch da última digitação e do início do aviso. Refs para
   // não re-renderizar por tecla — só o tick mexe em state, e só durante o aviso.
@@ -79,6 +86,17 @@ function TypingCoreImpl({
   // Bumps every time a keystroke lands a wrong char — drives the editor-card
   // error feedback (issue #10). Não altera nenhuma métrica (WPM/erros/precisão).
   const [errorPulse, setErrorPulse] = useState(0);
+
+  // Sequência de acertos: lida durante o render que o próprio `setTyped` já provoca.
+  const streakRef = useRef(0);
+  const bestStreakRef = useRef(0);
+  const milestoneRef = useRef({ hits: 0, level: -1 });
+
+  // Chegada: toca uma vez quando EU termino durante esta montagem (não ao reabrir já terminado).
+  const finishedAtMount = useRef(iFinished);
+  useEffect(() => {
+    if (iFinished && !finishedAtMount.current) playFinish();
+  }, [iFinished]);
 
   // Tick clock — stops once we finish so the timer and WPM freeze in place.
   useEffect(() => {
@@ -172,7 +190,19 @@ function TypingCoreImpl({
         // Count incorrect chars among the newly added ones
         let newErrors = 0;
         for (let i = typed.length; i < next.length; i++) {
-          if (next[i] !== code[i]) newErrors++;
+          if (next[i] !== code[i]) {
+            newErrors++;
+            streakRef.current = 0;
+          } else {
+            streakRef.current++;
+          }
+        }
+        const s = streakRef.current;
+        if (s > bestStreakRef.current) bestStreakRef.current = s;
+        const level = STREAK_MILESTONES.findIndex(m => m === s);
+        if (level !== -1) {
+          milestoneRef.current = { hits: milestoneRef.current.hits + 1, level };
+          playStreak(level);
         }
         setErrors(e => e + newErrors);
         setTotalKeystrokes(k => k + added);
@@ -216,42 +246,54 @@ function TypingCoreImpl({
           alvo e o editor quando o teclado virtual está aberto. */}
       <div className="card p-3 md:p-4">
         <div className="flex items-center gap-2 mb-2 md:mb-3">
-          <span className="label">{"// suas estatísticas"}</span>
-          <span className="text-[10px] text-text-dim ml-auto">
-            tempo {(elapsedMs / 1000).toFixed(1)}s
+          <span className="label">{t("typing.statsTitle")}</span>
+          <span className="text-[10px] text-text-dim ms-auto tabular-nums">
+            {t("typing.timeSeconds", { s: (elapsedMs / 1000).toFixed(1) })}
           </span>
         </div>
-        <div className="flex gap-2 overflow-x-auto [&>*]:shrink-0 md:grid md:grid-cols-4 md:gap-3 md:overflow-visible">
+        <div className="flex gap-2 overflow-x-auto [&>*]:shrink-0 md:grid md:grid-cols-5 md:gap-3 md:overflow-visible">
           <Stat
             icon={<Zap className="size-4" />}
-            label="WPM"
+            label={t("typing.statWpm")}
             value={wpm}
             color="text-neon-green"
           />
           <Stat
             icon={<Target className="size-4" />}
-            label="Precisão"
+            label={t("typing.statAccuracy")}
             value={`${accuracy}%`}
             color={accuracy >= 95 ? "text-neon-green" : accuracy >= 85 ? "text-neon-cyan" : "text-neon-amber"}
           />
           <Stat
             icon={<Timer className="size-4" />}
-            label="Progresso"
+            label={t("typing.statProgress")}
             value={`${Math.round(progress * 100)}%`}
             color="text-neon-cyan"
           />
           <Stat
             icon={<span className="font-bold text-sm leading-none">⛔</span>}
-            label="Erros (total)"
+            label={t("typing.statErrors")}
             value={errors}
             color={errors === 0 ? "text-neon-green" : "text-neon-red"}
-            title="Teclas erradas digitadas ao longo da corrida — inclui as que você já corrigiu."
+            title={t("typing.statErrorsTitle")}
+          />
+          <Stat
+            key={`streak-${milestoneRef.current.hits}`}
+            icon={<Flame className="size-4" />}
+            label={t("typing.streak")}
+            value={streakRef.current}
+            color={streakRef.current >= 25 ? "text-neon-violet" : "text-text"}
+            className={milestoneRef.current.hits > 0 ? "animate-streak-pop" : undefined}
           />
         </div>
-        <div className="mt-3 relative h-1.5 rounded-full bg-bg-soft overflow-hidden">
+        {/* #114: a barra ocupa o trilho inteiro e cresce por `scaleX` (origem no início
+            da linha) em vez de animar `width` — o spring roda no compositor e não dispara
+            layout/paint ao lado da textarea (mesma correção da pista no #59). */}
+        <div className="mt-3 relative h-1.5 rounded-full bg-bg-soft overflow-hidden" dir="ltr">
           <motion.div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-neon-green to-neon-cyan"
-            animate={{ width: `${Math.round(progress * 100)}%` }}
+            className="absolute inset-0 origin-left rounded-full bg-gradient-to-r from-neon-green to-neon-cyan"
+            initial={false}
+            animate={{ scaleX: progress }}
             transition={{ type: "spring", stiffness: 100, damping: 20 }}
           />
         </div>
@@ -275,6 +317,7 @@ function IdleWarning({
   secondsLeft: number | null;
   reduced: boolean | null;
 }) {
+  const { t } = useI18n();
   return (
     <AnimatePresence>
       {secondsLeft !== null && (
@@ -290,14 +333,12 @@ function IdleWarning({
             <AlarmClock className="size-6" />
           </span>
           <div className="min-w-0">
-            <p className="font-bold text-neon-amber">⚠️ Você está inativo</p>
-            <p className="text-sm text-text mt-0.5 font-mono">
-              Digite qualquer tecla para continuar na corrida.
-            </p>
+            <p className="font-bold text-neon-amber">{t("typing.idleTitle")}</p>
+            <p className="text-sm text-text mt-0.5 font-mono">{t("typing.idleText")}</p>
           </div>
-          <div className="ml-auto text-right shrink-0">
+          <div className="ms-auto text-end shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-mono">
-              desistência em
+              {t("typing.idleIn")}
             </div>
             <div className="font-mono font-bold text-3xl leading-none text-neon-amber tabular-nums">
               {secondsLeft}
@@ -314,21 +355,23 @@ function Stat({
   label,
   value,
   color,
-  title
+  title,
+  className
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   color: string;
   title?: string;
+  className?: string;
 }) {
   return (
-    <div className="rounded-md border border-bg-line bg-bg-soft/60 px-3 py-2" title={title}>
+    <div className={`rounded-md border border-bg-line bg-bg-soft/60 px-3 py-2 ${className ?? ""}`} title={title}>
       <div className="flex items-center gap-1 text-text-muted text-[10px] uppercase tracking-wider">
         {icon}
         {label}
       </div>
-      <div className={`font-mono font-bold text-2xl leading-tight mt-1 ${color}`}>
+      <div className={`font-mono font-bold text-2xl leading-tight mt-1 tabular-nums ${color}`}>
         {value}
       </div>
     </div>

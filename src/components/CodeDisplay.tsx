@@ -39,7 +39,8 @@ function CodeDisplayImpl({
   }, [cursor]);
 
   return (
-    <div className="card overflow-hidden">
+    // Código é sempre da esquerda para a direita, mesmo com a interface em árabe.
+    <div className="card overflow-hidden" dir="ltr">
       <div className="flex items-center justify-between border-b border-bg-line px-3 py-2 text-xs font-mono">
         <div className="flex items-center gap-2">
           <span className="flex gap-1">
@@ -49,7 +50,7 @@ function CodeDisplayImpl({
           </span>
           <span className="text-text-muted ml-2">snippet.{language}</span>
         </div>
-        <span className="text-text-dim">
+        <span className="text-text-dim tabular-nums">
           {cursor}/{code.length}
         </span>
       </div>

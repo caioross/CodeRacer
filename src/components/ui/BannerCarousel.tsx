@@ -18,7 +18,8 @@ import {
   type ClothParams,
   type ClothState
 } from "@/lib/banners";
-import type { ClothEngine, SlotView } from "@/lib/cloth/types";
+import type { ClothEngine, SlotView } from "@/lib/cloth/types";
+import { useI18n } from "@/i18n/client";
 
 /** Faixas horizontais por estandarte — a malha do pano. */
 const SEGMENTS = 9;
@@ -97,6 +98,7 @@ export function BannerCarousel({
   centerOn,
   labelledBy
 }: Props) {
+  const { tp } = useI18n();
   const reduced = useReducedMotion();
   const count = LANGUAGES.length;
   const checkedIndex = useMemo(
@@ -567,7 +569,7 @@ export function BannerCarousel({
                 type="button"
                 role="radio"
                 aria-checked={i === checkedIndex}
-                aria-label={votes ? `${l.label} — ${votes} voto${votes > 1 ? "s" : ""}` : l.label}
+                aria-label={votes ? tp("lobby.votesAria", votes, { lang: l.label }) : l.label}
                 tabIndex={i === focusIndex ? 0 : -1}
                 onFocus={() => setFocusIndex(i)}
                 onClick={() => {

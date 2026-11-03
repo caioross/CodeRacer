@@ -72,6 +72,9 @@ export interface ChatMsg {
   text: string;
   at: number;
   system?: boolean;
+  /** Mensagem de sistema traduzível (só local — nunca vai pelo canal). */
+  sysKey?: "joined" | "left" | "kicked";
+  sysVars?: Record<string, string>;
 }
 
 /** Merged live player = presence + latest progress. */

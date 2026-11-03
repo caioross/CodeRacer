@@ -2,8 +2,15 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
+import { useI18n } from "@/i18n/client";
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Diálogo de verdade (#128): `role="dialog"` + `aria-modal` + título ligado por
+// `aria-labelledby`; o foco ENTRA no diálogo ao abrir, fica preso nele (Tab/Shift+Tab
+// circulam lá dentro), Esc fecha e o foco volta para quem abriu.
 export function Modal({
   open,
   onClose,
@@ -17,12 +24,59 @@ export function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const { t } = useI18n();
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const opener = document.activeElement as HTMLElement | null;
+
+    // Primeiro campo/controle do conteúdo (pula o botão de fechar do cabeçalho).
+    const focusFirst = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      (items.find(el => !el.dataset.modalClose) ?? items[0] ?? panel).focus();
+    };
+    const raf = requestAnimationFrame(focusFirst);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        el => el.offsetParent !== null || el === document.activeElement
+      );
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !panel.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -35,20 +89,26 @@ export function Modal({
           onClick={onClose}
         >
           <motion.div
-            className="card w-full max-w-md p-5 neon-border"
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
+            className="card w-full max-w-md p-5 neon-border outline-none"
             initial={{ y: 20, opacity: 0, scale: 0.98 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 20, opacity: 0 }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-mono uppercase tracking-wider text-neon-green">
+              <h2 id={titleId} className="text-sm font-mono uppercase tracking-wider text-neon-green">
                 {title}
-              </h3>
+              </h2>
               <button
                 onClick={onClose}
+                data-modal-close="1"
                 className="text-text-muted hover:text-text"
-                aria-label="Fechar"
+                aria-label={t("common.close")}
               >
                 <X className="size-4" />
               </button>

@@ -99,10 +99,19 @@ export function isSupabaseConfigured(): boolean {
   return getServerSupabase() !== null;
 }
 
+/**
+ * Teto das leituras do ranking: com o banco fora do ar a página esperava o fetch
+ * desistir sozinho (LCP de 7,6 s medido em 03/11/2026). Passou disso, mostra o aviso.
+ */
+const READ_TIMEOUT_MS = 2500;
+
+export type ReadResult<T> = { rows: T[]; failed: boolean };
+
 /** Top players by personal-best WPM. */
-export async function getLeaderboard(limit = 25): Promise<LeaderRow[]> {
+export async function getLeaderboard(limit = 25): Promise<ReadResult<LeaderRow>> {
   const sb = getServerSupabase();
-  if (!sb) return [];
+  if (!sb) return { rows: [], failed: false };
+  try {
   const { data, error } = await sb
     .from("leaderboard")
     .select("name, wpm, accuracy, errors, language, difficulty, created_at")
@@ -112,18 +121,24 @@ export async function getLeaderboard(limit = 25): Promise<LeaderRow[]> {
     // leitura sempre iguais — nada acima dele polui o ranking público (#68/#28).
     .lte("wpm", MAX_PLAUSIBLE_WPM)
     .order("wpm", { ascending: false })
-    .limit(limit);
+    .limit(limit)
+    .abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS));
   if (error) {
     console.warn("[leaderboard] read error:", error.message);
-    return [];
+    return { rows: [], failed: true };
   }
-  return (data as LeaderRow[]) ?? [];
+  return { rows: (data as LeaderRow[]) ?? [], failed: false };
+  } catch (e) {
+    console.warn("[leaderboard] read failed:", (e as Error).message);
+    return { rows: [], failed: true };
+  }
 }
 
 /** Most recent finished matches. */
-export async function getRecentMatches(limit = 12): Promise<MatchRow[]> {
+export async function getRecentMatches(limit = 12): Promise<ReadResult<MatchRow>> {
   const sb = getServerSupabase();
-  if (!sb) return [];
+  if (!sb) return { rows: [], failed: false };
+  try {
   const { data, error } = await sb
     .from("matches")
     .select(
@@ -134,10 +149,15 @@ export async function getRecentMatches(limit = 12): Promise<MatchRow[]> {
     // (`winner_wpm` nulo) e só oculta os implausíveis (#68/#28).
     .or(`winner_wpm.is.null,winner_wpm.lte.${MAX_PLAUSIBLE_WPM}`)
     .order("finished_at", { ascending: false })
-    .limit(limit);
+    .limit(limit)
+    .abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS));
   if (error) {
     console.warn("[recent matches] read error:", error.message);
-    return [];
+    return { rows: [], failed: true };
   }
-  return (data as MatchRow[]) ?? [];
+  return { rows: (data as MatchRow[]) ?? [], failed: false };
+  } catch (e) {
+    console.warn("[recent matches] read failed:", (e as Error).message);
+    return { rows: [], failed: true };
+  }
 }

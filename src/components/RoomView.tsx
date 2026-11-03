@@ -15,12 +15,19 @@ import { MatrixRain } from "./MatrixRain";
 import { useRoom } from "@/lib/useRoom";
 import type { Player, RoomState } from "@/lib/types";
 import type { LivePlayer, ResultRow } from "@/lib/room";
+import { useI18n } from "@/i18n/client";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function RoomView({ roomCode }: { roomCode: string }) {
   const router = useRouter();
   const toast = useToast();
+  const { t, apiError } = useI18n();
 
-  const onError = useCallback((msg: string) => toast.push({ kind: "error", text: msg }), [toast]);
+  // O useRoom fala em pt (mensagens das rotas de API); a tela traduz na hora de mostrar.
+  const onError = useCallback(
+    (msg: string) => toast.push({ kind: "error", text: apiError(msg) }),
+    [toast, apiError]
+  );
   const onLeave = useCallback(() => router.push("/"), [router]);
 
   const { phase, meId, room, players, isLeader, isSpectator, chat, countdownN, voteTally, myVote, join, actions } =
@@ -69,7 +76,7 @@ export function RoomView({ roomCode }: { roomCode: string }) {
         <div className="text-center">
           <Logo size="md" />
           <p className="mt-4 text-text-muted text-sm font-mono">
-            <span className="animate-pulse">conectando à sala {roomCode}...</span>
+            <span className="animate-pulse">{t("room.connecting", { code: roomCode })}</span>
           </p>
         </div>
       </main>
@@ -84,10 +91,13 @@ export function RoomView({ roomCode }: { roomCode: string }) {
       <MatrixRain opacity={0.04} />
 
       <header className="relative z-10 flex items-center justify-between px-4 md:px-6 py-3 border-b border-bg-line bg-bg/50 backdrop-blur">
-        <button onClick={() => router.push("/")} className="flex items-center gap-2" aria-label="Voltar para a home">
+        <button onClick={() => router.push("/")} className="flex items-center gap-2" aria-label={t("common.backHome")}>
           <Logo size="sm" />
         </button>
-        <RoomCodePill code={compatRoom.code} />
+        <div className="flex items-center gap-2">
+          {compatRoom.status !== "racing" && <LanguageSwitcher />}
+          <RoomCodePill code={compatRoom.code} />
+        </div>
       </header>
 
       <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 py-6">
@@ -184,8 +194,12 @@ function NameGate({
   onJoin: (name: string) => void;
   onCancel: () => void;
 }) {
+  const { t, rich } = useI18n();
   return (
     <main className="relative min-h-screen grid place-items-center px-4">
+      <div className="absolute top-4 end-4 z-20">
+        <LanguageSwitcher />
+      </div>
       <MatrixRain opacity={0.06} />
       <motion.div
         initial={{ opacity: 0, y: 16 }}
@@ -199,12 +213,14 @@ function NameGate({
 
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 chip border-neon-green/40 text-neon-green mb-3">
-            <Users className="size-3" /> você foi convidado
+            <Users className="size-3" /> {t("room.invited")}
           </div>
           <p className="text-text-muted text-sm">
-            entre na sala{" "}
-            <span className="text-neon-green font-bold tracking-[0.25em]">{roomCode}</span>{" "}
-            e mostre quem digita mais rápido.
+            {rich(
+              "room.invitedText",
+              { code: c => <span className="text-neon-green font-bold tracking-[0.25em]">{c}</span> },
+              { code: roomCode }
+            )}
           </p>
         </div>
 
@@ -215,6 +231,7 @@ function NameGate({
 }
 
 function NameForm({ onJoin, onCancel }: { onJoin: (name: string) => void; onCancel: () => void }) {
+  const { t } = useI18n();
   return (
     <form
       onSubmit={e => {
@@ -225,24 +242,24 @@ function NameForm({ onJoin, onCancel }: { onJoin: (name: string) => void; onCanc
       }}
     >
       <label className="label" htmlFor="nick">
-        escolha seu nick
+        {t("room.chooseNick")}
       </label>
       <input
         id="nick"
         name="nick"
         autoFocus
         className="input mt-1.5 text-base"
-        placeholder="Ex.: caio_dev"
+        placeholder={t("home.namePlaceholder")}
         maxLength={20}
         defaultValue={typeof window !== "undefined" ? localStorage.getItem("coderacer:name") || "" : ""}
       />
       <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
         <button type="submit" className="btn-primary justify-center py-3">
           <LogIn className="size-4" />
-          Entrar na corrida
+          {t("room.joinRace")}
         </button>
         <button type="button" onClick={onCancel} className="btn-ghost px-4">
-          voltar
+          {t("common.back")}
         </button>
       </div>
     </form>
@@ -251,22 +268,23 @@ function NameForm({ onJoin, onCancel }: { onJoin: (name: string) => void; onCanc
 
 function RoomCodePill({ code }: { code: string }) {
   const toast = useToast();
+  const { t } = useI18n();
   function copyLink() {
     const link = `${window.location.origin}/room/${code}`;
     navigator.clipboard
       .writeText(link)
-      .then(() => toast.push({ kind: "success", text: "Link copiado!" }))
-      .catch(() => toast.push({ kind: "error", text: "Falha ao copiar" }));
+      .then(() => toast.push({ kind: "success", text: t("common.linkCopied") }))
+      .catch(() => toast.push({ kind: "error", text: t("common.copyFailed") }));
   }
   return (
     <button
       onClick={copyLink}
-      title="Copiar link da sala"
+      title={t("room.copyLinkTitle")}
       className="chip border-neon-green/40 text-neon-green hover:bg-neon-green/10 transition px-3 py-1.5"
     >
-      <span className="text-text-muted normal-case">sala</span>
-      <span className="font-bold tracking-[0.25em] ml-1">{code}</span>
-      <span className="ml-2 text-[10px] text-text-dim">copiar link</span>
+      <span className="text-text-muted normal-case">{t("room.roomWord")}</span>
+      <span className="font-bold tracking-[0.25em] ms-1" dir="ltr">{code}</span>
+      <span className="ms-2 hidden sm:inline text-[10px] text-text-dim">{t("room.copyLink")}</span>
     </button>
   );
 }

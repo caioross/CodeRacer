@@ -204,7 +204,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         let someoneElse = false;
         for (const p of newPresences as unknown as PresenceMeta[]) {
           if (p.id !== id) {
-            pushSystem(`${p.name} entrou na sala`);
+            pushSystem("joined", p.name, `${p.name} entrou na sala`);
             someoneElse = true;
           }
         }
@@ -228,7 +228,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
           setTimeout(() => {
             const kicked = roomRef.current?.kicked_ids;
             if (Array.isArray(kicked) && kicked.includes(leftId)) return;
-            pushSystem(`${leftName} saiu`);
+            pushSystem("left", leftName, `${leftName} saiu`);
           }, 400);
         }
       });
@@ -324,7 +324,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       // pela presence do momento (a vítima ainda não saiu do canal).
       for (const kid of d.announce) {
         const nome = presenceRef.current[kid]?.name;
-        if (nome) pushSystem(`${nome} foi removido da sala pelo líder`);
+        if (nome) pushSystem("kicked", nome, `${nome} foi removido da sala pelo líder`);
       }
       roomRef.current = next;
       setRoom(next);
@@ -359,10 +359,21 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       }
     }
 
-    function pushSystem(text: string) {
+    // Mensagem de sistema é LOCAL (não passa pelo canal): guarda a chave e o nome para a
+    // tela traduzir no idioma de quem lê; `text` fica como reserva em pt.
+    function pushSystem(sysKey: "joined" | "left" | "kicked", name: string, text: string) {
       setChat(prev => [
         ...prev.slice(-80),
-        { id: newPlayerId(), playerId: "system", name: "system", text, at: Date.now(), system: true }
+        {
+          id: newPlayerId(),
+          playerId: "system",
+          name: "system",
+          text,
+          at: Date.now(),
+          system: true,
+          sysKey,
+          sysVars: { name }
+        }
       ]);
     }
 
@@ -413,7 +424,14 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
   useEffect(() => {
     if (room?.status !== "racing" || !startMs) return;
     if (Date.now() >= startMs) return;
-    const t = setInterval(() => setNow(Date.now()), 100);
+    // #111: o intervalo se desliga sozinho no GO. Antes seguia a 10 Hz a corrida inteira,
+    // re-renderizando RoomView/Race/RaceTrack ao lado da textarea (área sagrada). O último
+    // tick (já ≥ start) é o que zera o `countdownN` e mostra a pista.
+    const t = setInterval(() => {
+      const n = Date.now();
+      setNow(n);
+      if (n >= startMs) clearInterval(t);
+    }, 100);
     return () => clearInterval(t);
   }, [room?.status, startMs]);
 

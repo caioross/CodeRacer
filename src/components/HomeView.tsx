@@ -19,6 +19,9 @@ import { useToast } from "./ui/Toast";
 import { LANGUAGES, DIFFICULTIES, langById, type LangId, type Difficulty } from "@/lib/languages";
 import { newPlayerId, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
 import { useAuth } from "@/lib/useAuth";
+import { useI18n } from "@/i18n/client";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { HowToPlay } from "./HowToPlay";
 
 const PERSIST_NAME_KEY = "coderacer:name";
 // Última dificuldade usada. Ausência = primeira sala do jogador → nasce no Fácil (§0.3).
@@ -34,18 +37,11 @@ type PublicRoom = {
   created_at: string;
 };
 
-function timeAgo(iso: string): string {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "agora";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)} h`;
-}
-
 export function HomeView() {
   const router = useRouter();
   const toast = useToast();
   const auth = useAuth();
+  const { t, apiError } = useI18n();
 
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -105,7 +101,7 @@ export function HomeView() {
 
   async function handleCreate() {
     if (!name.trim()) {
-      toast.push({ kind: "error", text: "Coloca um nome aí, fera" });
+      toast.push({ kind: "error", text: t("home.needName") });
       return;
     }
     setLoading(true);
@@ -124,7 +120,7 @@ export function HomeView() {
       const json = await res.json().catch(() => ({}));
       setLoading(false);
       if (!json?.ok) {
-        toast.push({ kind: "error", text: json?.error || "Erro ao criar sala" });
+        toast.push({ kind: "error", text: apiError(json?.error, "home.createError") });
         return;
       }
       // Lembra a dificuldade usada para as próximas salas deste jogador (last-used).
@@ -135,18 +131,18 @@ export function HomeView() {
       persistAndGo(playerId, json.code);
     } catch {
       setLoading(false);
-      toast.push({ kind: "error", text: "Sem conexão com o servidor" });
+      toast.push({ kind: "error", text: t("common.noConnection") });
     }
   }
 
   async function joinByCode(rawCode: string) {
     if (!name.trim()) {
-      toast.push({ kind: "error", text: "Coloca um nome aí, fera" });
+      toast.push({ kind: "error", text: t("home.needName") });
       return;
     }
     const code = rawCode.trim().toUpperCase();
     if (!code) {
-      toast.push({ kind: "error", text: "Cola o código da sala" });
+      toast.push({ kind: "error", text: t("home.needCode") });
       return;
     }
     setLoading(true);
@@ -155,17 +151,17 @@ export function HomeView() {
       const json = await res.json().catch(() => ({}));
       setLoading(false);
       if (!json?.ok) {
-        toast.push({ kind: "error", text: json?.error || "Sala não encontrada" });
+        toast.push({ kind: "error", text: apiError(json?.error, "errors.roomNotFound") });
         return;
       }
       if (json.room?.status === "racing") {
-        toast.push({ kind: "error", text: "Partida em andamento, aguarda terminar" });
+        toast.push({ kind: "error", text: t("home.raceInProgress") });
         return;
       }
       persistAndGo(newPlayerId(), code);
     } catch {
       setLoading(false);
-      toast.push({ kind: "error", text: "Sem conexão com o servidor" });
+      toast.push({ kind: "error", text: t("common.noConnection") });
     }
   }
 
@@ -185,7 +181,7 @@ export function HomeView() {
             href="/leaderboard"
             className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
           >
-            <Trophy className="size-3.5" /> ranking
+            <Trophy className="size-3.5" /> {t("common.ranking")}
           </Link>
 
           {auth.available &&
@@ -211,7 +207,7 @@ export function HomeView() {
                   onClick={auth.signOut}
                   className="text-[10px] font-mono text-text-dim hover:text-neon-red transition-colors"
                 >
-                  sair
+                  {t("home.signOut")}
                 </button>
               </div>
             ) : (
@@ -221,26 +217,28 @@ export function HomeView() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={auth.signInWithGoogle}
-                  title="Opcional — entrar só pré-preenche seu nick. Dá para jogar sem conta."
-                  aria-label="Entrar com Google (opcional — dá para jogar sem conta)"
+                  title={t("home.signInTitle")}
+                  aria-label={t("home.signInAria")}
                   className="btn-secondary text-xs px-3 py-1.5"
                 >
-                  <GoogleIcon /> entrar com Google
+                  <GoogleIcon /> {t("home.signIn")}
                 </button>
                 {/* Redundante para leitor de tela (já está no aria-label do botão). */}
                 <span
                   aria-hidden="true"
                   className="hidden sm:inline text-[10px] font-mono text-text-dim"
                 >
-                  opcional
+                  {t("home.optional")}
                 </span>
               </div>
             ))}
 
           <div className="hidden md:flex items-center gap-2 text-xs font-mono text-text-muted">
             <span className="size-1.5 rounded-full bg-neon-green shadow-glow animate-pulse" />
-            <span>online</span>
+            <span>{t("common.online")}</span>
           </div>
+
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -248,10 +246,7 @@ export function HomeView() {
         {/* hero */}
         <div className="text-center mb-10 md:mb-12">
           {/* Real, single H1 for SEO — visually replaced by the animated logo. */}
-          <h1 className="sr-only">
-            CodeRacer — corrida de digitação para programadores: treine sozinho ou jogue
-            multiplayer com amigos, digitando código mais rápido, sem cadastro.
-          </h1>
+          <h1 className="sr-only">{t("home.srTitle")}</h1>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -269,8 +264,7 @@ export function HomeView() {
             className="mt-6 text-text-muted text-base md:text-lg max-w-2xl mx-auto text-balance"
           >
             <span className="text-neon-green">{"// "}</span>
-            Digite código de verdade — treine sozinho ou crie uma sala e chame os amigos.
-            Quem for mais rápido leva. Sem cadastro, sem firula.
+            {t("home.tagline")}
           </motion.p>
 
           <motion.div
@@ -280,13 +274,13 @@ export function HomeView() {
             className="mt-5 inline-flex flex-wrap items-center justify-center gap-3 text-xs text-text-dim font-mono"
           >
             <span className="chip border-neon-green/30 text-neon-green">
-              <Zap className="size-3" /> tempo real
+              <Zap className="size-3" /> {t("home.chipRealtime")}
             </span>
             <span className="chip border-neon-cyan/30 text-neon-cyan">
-              <Users className="size-3" /> multiplayer
+              <Users className="size-3" /> {t("home.chipMultiplayer")}
             </span>
             <span className="chip border-neon-violet/30 text-neon-violet">
-              <Code2 className="size-3" /> {LANGUAGES.length} linguagens
+              <Code2 className="size-3" /> {t("home.chipLanguages", { n: LANGUAGES.length })}
             </span>
           </motion.div>
         </div>
@@ -306,8 +300,8 @@ export function HomeView() {
                 <input
                   id="player_name"
                   className="input mt-1.5 text-base"
-                  placeholder="Ex.: caio_dev"
-                  aria-label="Seu nick de jogador"
+                  placeholder={t("home.namePlaceholder")}
+                  aria-label={t("home.nameAria")}
                   maxLength={20}
                   value={name}
                   onChange={e => setName(e.target.value)}
@@ -317,7 +311,7 @@ export function HomeView() {
                     (`hidden sm:inline`): aqui é onde o jogador de fato age. */}
                 <p className="mt-1.5 text-[11px] font-mono text-text-dim">
                   <span className="text-neon-green">{"// "}</span>
-                  é só o nick — sem conta, sem e-mail
+                  {t("home.nameHint")}
                 </p>
               </div>
 
@@ -328,20 +322,20 @@ export function HomeView() {
                 innerClassName="py-3 text-base font-semibold text-neon-green glow-text-green"
               >
                 <Plus className="size-4" />
-                Criar sala
+                {t("home.createRoom")}
               </StarBorder>
 
               <div className="my-4 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-text-dim">
                 <span className="h-px flex-1 bg-bg-line" />
-                ou entre numa sala
+                {t("home.orJoin")}
                 <span className="h-px flex-1 bg-bg-line" />
               </div>
 
               <div className="flex gap-2">
                 <input
                   className="input uppercase tracking-[0.3em] text-center"
-                  placeholder="CÓDIGO"
-                  aria-label="Código de 6 letras da sala"
+                  placeholder={t("home.codePlaceholder")}
+                  aria-label={t("home.codeAria")}
                   maxLength={6}
                   value={joinCode}
                   onChange={e =>
@@ -353,7 +347,7 @@ export function HomeView() {
                   onClick={handleJoin}
                   disabled={loading}
                   className="btn-secondary px-4"
-                  aria-label="Entrar na sala com o código"
+                  aria-label={t("home.joinAria")}
                 >
                   <LogIn className="size-4" />
                 </button>
@@ -362,20 +356,22 @@ export function HomeView() {
               {/* Treino Livre (issue #25): caminho jogável em 1 clique, sem sala. */}
               <div className="my-4 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-text-dim">
                 <span className="h-px flex-1 bg-bg-line" />
-                ou sozinho
+                {t("home.orSolo")}
                 <span className="h-px flex-1 bg-bg-line" />
               </div>
 
               <Link
                 href="/practice"
                 className="btn-secondary w-full justify-center py-2.5 text-sm"
-                aria-label="Treinar sozinho, sem criar sala"
+                aria-label={t("home.practiceAria")}
               >
-                <Dumbbell className="size-4" /> treinar sozinho →
+                <Dumbbell className="size-4" /> {t("home.practiceCta")}
               </Link>
             </SpotlightCard>
           </motion.div>
         </div>
+
+        <HowToPlay />
 
         {/* public rooms browser */}
         <PublicRooms
@@ -389,23 +385,23 @@ export function HomeView() {
         <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <Feature
             icon={<Code2 className="size-4 text-neon-green" />}
-            title="snippets reais"
-            text={`${LANGUAGES.length} linguagens, 300+ trechos de código de verdade em 3 níveis. Cada partida sorteia um diferente.`}
+            title={t("home.featSnippetsTitle")}
+            text={t("home.featSnippetsText", { n: LANGUAGES.length })}
           />
           <Feature
             icon={<Users className="size-4 text-neon-cyan" />}
-            title={`até ${ABSOLUTE_MAX_PLAYERS} jogadores`}
-            text="Compartilhe o código de 6 letras ou o link da sala — gente entra na hora."
+            title={t("home.featPlayersTitle", { n: ABSOLUTE_MAX_PLAYERS })}
+            text={t("home.featPlayersText")}
           />
           <Feature
             icon={<Trophy className="size-4 text-neon-violet" />}
-            title="WPM + precisão"
-            text="Posição em tempo real no topo, estatísticas no final. Pódio com ouro/prata/bronze."
+            title={t("home.featStatsTitle")}
+            text={t("home.featStatsText")}
           />
         </div>
 
         <footer className="mt-16 mb-6 flex flex-col items-center gap-2 text-center text-xs text-text-dim font-mono">
-          <span className="terminal-prompt">made with caffeine ☕ &amp; segfaults</span>
+          <span className="terminal-prompt">{t("common.footer")}</span>
           <a
             href="https://github.com/caioross"
             target="_blank"
@@ -420,7 +416,7 @@ export function HomeView() {
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="// configurar sala"
+        title={t("home.modalTitle")}
         footer={
           <>
             <button
@@ -428,10 +424,10 @@ export function HomeView() {
               onClick={() => setCreateOpen(false)}
               disabled={loading}
             >
-              cancelar
+              {t("common.cancel")}
             </button>
             <button className="btn-primary" onClick={handleCreate} disabled={loading}>
-              {loading ? "criando..." : "criar sala →"}
+              {loading ? t("home.creating") : t("home.create")}
             </button>
           </>
         }
@@ -439,7 +435,7 @@ export function HomeView() {
         <div className="space-y-4">
           <div>
             <label className="label" id="create-lang-label">
-              linguagem
+              {t("common.language")}
             </label>
             <div className="mt-2">
               <BannerCarousel
@@ -451,7 +447,7 @@ export function HomeView() {
           </div>
 
           <div>
-            <label className="label">dificuldade</label>
+            <label className="label">{t("common.difficulty")}</label>
             <div className="mt-2 grid grid-cols-3 gap-1.5">
               {DIFFICULTIES.map(d => (
                 <button
@@ -464,9 +460,9 @@ export function HomeView() {
                       : "border-bg-line text-text-muted hover:text-text hover:border-text-dim")
                   }
                 >
-                  <div className="font-bold">{d.label}</div>
+                  <div className="font-bold">{t(`difficulty.${d.id}.label` as const)}</div>
                   <div className="text-[10px] mt-0.5 text-text-dim normal-case">
-                    {d.desc}
+                    {t(`difficulty.${d.id}.desc` as const)}
                   </div>
                 </button>
               ))}
@@ -474,7 +470,7 @@ export function HomeView() {
           </div>
 
           <div>
-            <label className="label">jogadores máx ({maxPlayers})</label>
+            <label className="label">{t("common.maxPlayers", { n: maxPlayers })}</label>
             <input
               type="range"
               min={2}
@@ -503,12 +499,10 @@ export function HomeView() {
               )}
               <span>
                 <span className="block text-sm font-medium text-text">
-                  {isPublic ? "sala pública" : "sala privada"}
+                  {isPublic ? t("home.publicRoom") : t("home.privateRoom")}
                 </span>
                 <span className="block text-[10px] text-text-dim normal-case">
-                  {isPublic
-                    ? "aparece na busca de salas da home"
-                    : "só entra quem tem o código ou link"}
+                  {isPublic ? t("home.publicHint") : t("home.privateHint")}
                 </span>
               </span>
             </span>
@@ -521,7 +515,7 @@ export function HomeView() {
               <span
                 className={
                   "absolute top-0.5 size-4 rounded-full transition-all " +
-                  (isPublic ? "left-[18px] bg-neon-green" : "left-0.5 bg-text-muted")
+                  (isPublic ? "start-[18px] bg-neon-green" : "start-0.5 bg-text-muted")
                 }
               />
             </span>
@@ -574,12 +568,13 @@ function PublicRooms({
   onRefresh: () => void;
   onEnter: (code: string) => void;
 }) {
+  const { t, ago, difficulty } = useI18n();
   return (
     <div className="mt-12 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Globe className="size-4 text-neon-green" />
-          <span className="label">salas públicas abertas</span>
+          <span className="label">{t("home.roomsTitle")}</span>
           {rooms.length > 0 && (
             <span className="text-[10px] text-text-dim">({rooms.length})</span>
           )}
@@ -587,9 +582,9 @@ function PublicRooms({
         <button
           onClick={onRefresh}
           className="btn-ghost text-xs px-2 py-1"
-          aria-label="Atualizar lista de salas"
+          aria-label={t("home.refreshAria")}
         >
-          <RefreshCw className={"size-3.5 " + (loading ? "animate-spin" : "")} /> atualizar
+          <RefreshCw className={"size-3.5 " + (loading ? "animate-spin" : "")} /> {t("home.refresh")}
         </button>
       </div>
 
@@ -601,8 +596,8 @@ function PublicRooms({
         </div>
       ) : rooms.length === 0 ? (
         <div className="card p-6 text-center text-sm text-text-muted">
-          nenhuma sala pública aberta agora —{" "}
-          <span className="text-neon-green">crie a primeira!</span>
+          {t("home.roomsEmpty")}{" "}
+          <span className="text-neon-green">{t("home.roomsEmptyCta")}</span>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -627,18 +622,18 @@ function PublicRooms({
                     {lang?.label ?? r.language}
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-text-dim font-mono">
-                    <span>{r.difficulty}</span>
+                    <span>{difficulty(r.difficulty)}</span>
                     <span>·</span>
-                    <span>até {r.max_players}p</span>
+                    <span>{t("home.upTo", { n: r.max_players })}</span>
                     <span>·</span>
-                    <span>{timeAgo(r.created_at)}</span>
+                    <span>{ago(r.created_at)}</span>
                   </div>
                 </div>
                 <button
                   onClick={() => onEnter(r.code)}
                   className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
                 >
-                  <LogIn className="size-3.5" /> entrar
+                  <LogIn className="size-3.5" /> {t("home.enter")}
                 </button>
               </div>
             );

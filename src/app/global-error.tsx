@@ -1,7 +1,8 @@
 "use client";
 
 // Last-resort boundary for errors thrown in the root layout itself.
-// It must render its own <html> and <body>.
+// It must render its own <html> and <body>. Fica FORA do provedor de idioma (o layout é
+// justamente o que quebrou), então o texto é bilíngue pt/en e fixo.
 export default function GlobalError({
   reset
 }: {
@@ -9,7 +10,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html lang="pt-BR">
+    <html lang="en">
       <body
         style={{
           margin: 0,
@@ -23,9 +24,9 @@ export default function GlobalError({
       >
         <div style={{ textAlign: "center", padding: 24 }}>
           <div style={{ fontSize: 40, fontWeight: 800, color: "#00ff88" }}>{">_"}</div>
-          <h1 style={{ fontSize: 22, marginTop: 12 }}>o CodeRacer travou feio</h1>
+          <h1 style={{ fontSize: 22, marginTop: 12 }}>CodeRacer crashed · o CodeRacer travou</h1>
           <p style={{ color: "#7d8590", fontSize: 14, marginTop: 8 }}>
-            {"// recarregue para voltar à pista"}
+            {"// reload to get back on track · recarregue para voltar à pista"}
           </p>
           <button
             onClick={reset}
@@ -41,7 +42,7 @@ export default function GlobalError({
               fontFamily: "inherit"
             }}
           >
-            recarregar
+            reload · recarregar
           </button>
         </div>
       </body>

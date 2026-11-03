@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send } from "lucide-react";
 import type { ChatMessage, Player } from "@/lib/types";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 export function Chat({
@@ -17,6 +18,7 @@ export function Chat({
   meId: string;
   onSend: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -30,7 +32,7 @@ export function Chat({
   return (
     <div className="card flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-bg-line">
-        <span className="label">{"// chat"}</span>
+        <span className="label">{t("chat.title")}</span>
         <span className="text-[10px] text-text-dim">{messages.length} msgs</span>
       </div>
       {/* Altura limitada + rolagem interna (issue #70): sem um teto, o chat cresce
@@ -57,7 +59,7 @@ export function Chat({
                 )}
               >
                 {isSystem ? (
-                  <span>{"// "}{m.text}</span>
+                  <span>{"// "}{m.sysKey ? t(`chat.${m.sysKey}` as const, m.sysVars) : m.text}</span>
                 ) : (
                   <span>
                     <span
@@ -65,7 +67,7 @@ export function Chat({
                       style={{ color: colorOf(m.playerId) }}
                     >
                       {m.name}
-                      {mine && " (você)"}
+                      {mine && t("common.you")}
                     </span>
                     <span className="text-text-muted"> › </span>
                     <span className="text-text">{m.text}</span>
@@ -89,7 +91,8 @@ export function Chat({
         <input
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="// digite uma msg..."
+          placeholder={t("chat.placeholder")}
+          aria-label={t("chat.title")}
           maxLength={200}
           className="input"
         />

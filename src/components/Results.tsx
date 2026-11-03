@@ -7,7 +7,11 @@ import type { Player, RoomState } from "@/lib/types";
 import { Chat } from "./Chat";
 import { useToast } from "./ui/Toast";
 import { buildShareText } from "@/lib/share";
-import { formatMs } from "@/lib/utils";
+import { formatMs } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
+import { useEffect } from "react";
+import { playFanfare } from "@/lib/sound";
+import { Confetti } from "./effects/Confetti";
 
 // Metadados por lugar (índice = colocação-1): altura da coluna e medalha.
 const PODIUM_META = [
@@ -29,6 +33,7 @@ export function Results({
   onPlayAgain: () => void;
   onChat: (text: string) => void;
 }) {
+  const { t, ord } = useI18n();
   const reduced = useReducedMotion();
   const startedAt = room.startedAt || 0;
   const ranked = [...room.players].sort((a, b) => {
@@ -41,6 +46,13 @@ export function Results({
 
   const podium = ranked.slice(0, 3);
   const me = ranked.find(p => p.id === meId);
+  const myPlace = me?.place ?? 0;
+
+  // Fanfarra uma vez para quem subiu ao pódio.
+  useEffect(() => {
+    if (myPlace >= 1 && myPlace <= 3) playFanfare(myPlace as 1 | 2 | 3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Ordem na tela: 2º, 1º, 3º (só as colocações que têm jogador).
   const empty = ranked.length === 0;
@@ -52,7 +64,8 @@ export function Results({
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
       <div className="space-y-6">
         {/* headline */}
-        <div className="text-center">
+        <div className="text-center relative">
+          {myPlace === 1 && <Confetti />}
           <motion.div
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -61,14 +74,14 @@ export function Results({
           >
             <Trophy className="size-6" />
             <span className="text-2xl md:text-3xl font-bold tracking-tight gradient-text">
-              Partida finalizada
+              {t("results.finished")}
             </span>
           </motion.div>
           {me && (
             <p className="text-text-muted text-sm mt-2 font-mono">
               {me.place
-                ? `// você terminou em ${me.place}º`
-                : "// você não terminou esta corrida"}
+                ? t("results.youPlaced", { ord: ord(me.place) })
+                : t("results.youDnf")}
             </p>
           )}
         </div>
@@ -105,17 +118,17 @@ export function Results({
         {/* full table */}
         <div className="card overflow-hidden">
           <div className="px-4 py-2 border-b border-bg-line">
-            <span className="label">{"// classificação completa"}</span>
+            <span className="label">{t("results.fullTable")}</span>
           </div>
           <table className="w-full text-sm font-mono">
             <thead>
-              <tr className="text-left text-text-muted text-[11px] uppercase tracking-wider border-b border-bg-line">
-                <th className="px-4 py-2 w-12">#</th>
-                <th className="px-2 py-2">jogador</th>
-                <th className="px-2 py-2 text-right">wpm</th>
-                <th className="px-2 py-2 text-right">precisão</th>
-                <th className="px-2 py-2 text-right">erros</th>
-                <th className="px-2 py-2 text-right">tempo</th>
+              <tr className="text-start text-text-muted text-[11px] uppercase tracking-wider border-b border-bg-line">
+                <th scope="col" className="px-4 py-2 w-12 text-start">#</th>
+                <th scope="col" className="px-2 py-2 text-start">{t("common.player")}</th>
+                <th scope="col" className="px-2 py-2 text-end">{t("common.wpm")}</th>
+                <th scope="col" className="px-2 py-2 text-end">{t("common.accuracy")}</th>
+                <th scope="col" className="px-2 py-2 text-end">{t("common.errors")}</th>
+                <th scope="col" className="px-2 py-2 text-end">{t("common.time")}</th>
               </tr>
             </thead>
             <tbody>
@@ -146,11 +159,11 @@ export function Results({
                 className="btn-primary px-6 py-3"
               >
                 <RotateCcw className="size-4" />
-                Jogar de novo
+                {t("results.playAgain")}
               </motion.button>
             ) : (
               <div className="text-text-muted text-sm font-mono">
-                <span className="animate-pulse">{"// aguardando líder reiniciar..."}</span>
+                <span className="animate-pulse">{t("results.waitingLeader")}</span>
               </div>
             )}
             {me && <ShareButton me={me} />}
@@ -159,7 +172,7 @@ export function Results({
             href="/leaderboard"
             className="inline-flex items-center gap-1.5 text-xs font-mono text-text-muted hover:text-neon-amber transition-colors"
           >
-            <Trophy className="size-3.5" /> ver ranking global
+            <Trophy className="size-3.5" /> {t("results.viewRanking")}
           </Link>
         </div>
       </div>
@@ -181,11 +194,12 @@ export function Results({
 // Sala terminou sem ninguém na lista (todos saíram antes do fim). Sem este guard o
 // pódio indexaria `podium[1]` num array vazio e a tela quebrava com TypeError.
 function EmptyPodium() {
+  const { t } = useI18n();
   return (
     <div className="card max-w-md mx-auto p-6 text-center">
       <div className="text-4xl mb-2">🏁</div>
       <div className="text-sm font-mono text-text-muted">
-        {"// ninguém terminou esta corrida"}
+        {t("results.nobody")}
       </div>
     </div>
   );
@@ -206,6 +220,7 @@ function PodiumCard({
   reduced: boolean | null;
 }) {
   const isFirst = meta.place === 1;
+  const { t, ord } = useI18n();
   return (
     <motion.div
       initial={reduced ? false : { y: 30, opacity: 0 }}
@@ -224,17 +239,17 @@ function PodiumCard({
           : `0 0 16px ${player.color}30`
       }}
     >
-      <div className="absolute top-3 left-3 text-3xl">{meta.medal}</div>
+      <div className="absolute top-3 start-3 text-3xl">{meta.medal}</div>
       <div className="text-center mb-2 mt-2 text-xs text-text-dim font-mono">
-        {meta.place}º lugar
+        {t("common.place", { ord: ord(meta.place) })}
       </div>
       <div
         className="text-center font-bold truncate"
         style={{ color: player.color, fontSize: isFirst ? 22 : 18 }}
       >
-        {player.name}{isMe && " (você)"}
+        {player.name}{isMe && t("common.you")}
       </div>
-      <div className="text-center text-[11px] text-text-muted mt-1 font-mono">
+      <div className="text-center text-[11px] text-text-muted mt-1 font-mono tabular-nums">
         {Math.round(player.wpm)} wpm · {Math.round(player.accuracy)}%
       </div>
     </motion.div>
@@ -254,6 +269,7 @@ function SoloHero({
   reduced: boolean | null;
 }) {
   const time = player.finishedAt ? formatMs(player.finishedAt - startedAt) : "—";
+  const { t, ord } = useI18n();
   return (
     <div className="max-w-md mx-auto">
       <motion.div
@@ -267,18 +283,18 @@ function SoloHero({
         }}
       >
         <div className="text-5xl mb-2">🥇</div>
-        <div className="text-xs text-text-dim font-mono mb-1">1º lugar</div>
+        <div className="text-xs text-text-dim font-mono mb-1">{t("common.place", { ord: ord(1) })}</div>
         <div
           className="font-bold truncate text-2xl"
           style={{ color: player.color }}
         >
-          {player.name}{isMe && " (você)"}
+          {player.name}{isMe && t("common.you")}
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
-          <SoloStat label="wpm" value={Math.round(player.wpm)} />
-          <SoloStat label="precisão" value={`${Math.round(player.accuracy)}%`} />
-          <SoloStat label="erros" value={player.errors} />
-          <SoloStat label="tempo" value={time} />
+          <SoloStat label={t("common.wpm")} value={Math.round(player.wpm)} />
+          <SoloStat label={t("common.accuracy")} value={`${Math.round(player.accuracy)}%`} />
+          <SoloStat label={t("common.errors")} value={player.errors} />
+          <SoloStat label={t("common.time")} value={time} />
         </div>
       </motion.div>
     </div>
@@ -291,7 +307,7 @@ function SoloStat({ label, value }: { label: string; value: string | number }) {
       <div className="text-[10px] uppercase tracking-wider text-text-muted font-mono">
         {label}
       </div>
-      <div className="text-lg font-bold font-mono">{value}</div>
+      <div className="text-lg font-bold font-mono tabular-nums">{value}</div>
     </div>
   );
 }
@@ -300,12 +316,13 @@ function SoloStat({ label, value }: { label: string; value: string | number }) {
 // Ação SECUNDÁRIA de propósito — "Jogar de novo" continua sendo o CTA primário.
 function ShareButton({ me }: { me: Player }) {
   const toast = useToast();
+  const { t, ord } = useI18n();
 
   function copyToClipboard(text: string) {
     navigator.clipboard
       .writeText(text)
-      .then(() => toast.push({ kind: "success", text: "Resultado copiado!" }))
-      .catch(() => toast.push({ kind: "error", text: "Falha ao copiar" }));
+      .then(() => toast.push({ kind: "success", text: t("results.copied") }))
+      .catch(() => toast.push({ kind: "error", text: t("common.copyFailed") }));
   }
 
   function onShare() {
@@ -313,7 +330,11 @@ function ShareButton({ me }: { me: Player }) {
     // NEXT_PUBLIC_SITE_URL estar setada no build e cai num domínio que não é o
     // de produção quando não está.
     const url = window.location.origin;
-    const text = buildShareText(me, url);
+    const text = buildShareText(me, url, {
+      withPlace: t("results.shareWithPlace"),
+      noPlace: t("results.shareNoPlace"),
+      ord
+    });
     if (typeof navigator.share === "function") {
       navigator.share({ text, url }).catch((err: unknown) => {
         // Cancelar não é falhar: se o jogador fechou o sheet nativo ele disse
@@ -331,11 +352,11 @@ function ShareButton({ me }: { me: Player }) {
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onShare}
-      aria-label="Compartilhar meu resultado"
+      aria-label={t("results.shareAria")}
       className="btn-secondary px-6 py-3"
     >
       <Share2 className="size-4" />
-      Compartilhar
+      {t("common.share")}
     </motion.button>
   );
 }
@@ -352,21 +373,22 @@ function PlayerRow({
   time: string;
 }) {
   const medalStr = player.place === 1 ? "🥇" : player.place === 2 ? "🥈" : player.place === 3 ? "🥉" : "";
+  const { t, ord } = useI18n();
   return (
     <tr className={`border-b border-bg-line/60 ${isMe ? "bg-neon-green/5" : ""}`}>
       <td className="px-4 py-2 text-text-dim">
-        {medalStr || rank + "º"}
+        {medalStr || ord(rank)}
       </td>
       <td className="px-2 py-2 font-medium" style={{ color: player.color }}>
-        {player.name}{isMe && " (você)"}
+        {player.name}{isMe && t("common.you")}
         {!player.finishedAt && (
-          <span className="text-text-dim text-xs ml-2">{"// não terminou"}</span>
+          <span className="text-text-dim text-xs ms-2">{t("results.dnf")}</span>
         )}
       </td>
-      <td className="px-2 py-2 text-right">{Math.round(player.wpm)}</td>
-      <td className="px-2 py-2 text-right">{Math.round(player.accuracy)}%</td>
-      <td className="px-2 py-2 text-right">{player.errors}</td>
-      <td className="px-2 py-2 text-right text-text-muted">{time}</td>
+      <td className="px-2 py-2 text-end tabular-nums">{Math.round(player.wpm)}</td>
+      <td className="px-2 py-2 text-end tabular-nums">{Math.round(player.accuracy)}%</td>
+      <td className="px-2 py-2 text-end tabular-nums">{player.errors}</td>
+      <td className="px-2 py-2 text-end tabular-nums text-text-muted">{time}</td>
     </tr>
   );
 }

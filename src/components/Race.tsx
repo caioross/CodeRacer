@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import type { RoomState } from "@/lib/types";
+import { playGo } from "@/lib/sound";
 import { RaceTrack } from "./RaceTrack";
 import { FloatingChat } from "./FloatingChat";
 import { TypingCore } from "./TypingCore";
@@ -28,6 +30,12 @@ export function Race({
   const startedAt = room.startedAt!;
   const me = room.players.find(p => p.id === meId);
   const myFinishedAt = me?.finishedAt ?? null;
+
+  // "GO!" sonoro quando a pista aparece logo após a contagem (não ao reconectar no meio).
+  useEffect(() => {
+    if (Date.now() - startedAt < 2500) playGo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto">

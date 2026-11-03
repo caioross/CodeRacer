@@ -9,6 +9,7 @@ import { Chat } from "./Chat";
 import { PlayerList } from "./PlayerList";
 import { useToast } from "./ui/Toast";
 import { BannerCarousel } from "./ui/BannerCarousel";
+import { useI18n } from "@/i18n/client";
 
 export function Lobby({
   room,
@@ -38,6 +39,7 @@ export function Lobby({
   onVote: (language: LangId) => void;
 }) {
   const toast = useToast();
+  const { t, tp, rich } = useI18n();
 
   const me = room.players.find(p => p.id === meId);
   const myReady = !!me?.ready;
@@ -52,17 +54,17 @@ export function Lobby({
   const leaders = LANGUAGES.filter(l => maxVotes > 0 && (voteTally[l.id] ?? 0) === maxVotes);
   const voteSummary =
     totalVotes === 0
-      ? "ninguém votou ainda — a linguagem padrão da sala será usada"
+      ? t("lobby.noVotes")
       : leaders.length === 1
-      ? `vencendo: ${leaders[0].label} · ${maxVotes} voto${maxVotes > 1 ? "s" : ""}`
-      : `empate: ${leaders.map(l => l.label).join(", ")} — sorteio no início`;
+      ? tp("lobby.winning", maxVotes, { lang: leaders[0].label })
+      : t("lobby.tie", { langs: leaders.map(l => l.label).join(", ") });
 
   function copyLink() {
     const link = `${window.location.origin}/room/${room.code}`;
     navigator.clipboard
       .writeText(link)
-      .then(() => toast.push({ kind: "success", text: "Link copiado!" }))
-      .catch(() => toast.push({ kind: "error", text: "Falha ao copiar" }));
+      .then(() => toast.push({ kind: "success", text: t("common.linkCopied") }))
+      .catch(() => toast.push({ kind: "error", text: t("common.copyFailed") }));
   }
 
   return (
@@ -77,24 +79,21 @@ export function Lobby({
           <div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                <span className="text-neon-green">{"// "}</span>lobby
-                <span className="text-text-dim text-base ml-2">
-                  {room.players.length}/{room.settings.maxPlayers} jogadores
+                <span className="text-neon-green">{"// "}</span>
+                {t("lobby.title")}
+                <span className="text-text-dim text-base ms-2">
+                  {t("lobby.players", { n: room.players.length, max: room.settings.maxPlayers })}
                 </span>
               </h1>
               <p className="text-text-muted text-sm mt-1">
-                {isLeader ? (
-                  <>
-                    Você é o <span className="text-neon-amber">líder</span>. Configure
-                    a partida — você só inicia quando todos marcarem{" "}
-                    <span className="text-neon-green">pronto</span>.
-                  </>
-                ) : (
-                  <>
-                    Marque que você está <span className="text-neon-green">pronto</span> — o
-                    líder começa quando todos estiverem.
-                  </>
-                )}
+                {isLeader
+                  ? rich("lobby.leaderIntro", {
+                      a: c => <span className="text-neon-amber">{c}</span>,
+                      b: c => <span className="text-neon-green">{c}</span>
+                    })
+                  : rich("lobby.guestIntro", {
+                      b: c => <span className="text-neon-green">{c}</span>
+                    })}
               </p>
             </div>
           </div>
@@ -112,10 +111,10 @@ export function Lobby({
         >
           <div className="flex items-center gap-2 mb-4">
             <SettingsIcon className="size-4 text-text-muted" />
-            <span className="label">configurações</span>
+            <span className="label">{t("lobby.settings")}</span>
             {!isLeader && (
-              <span className="text-[10px] text-text-dim ml-2">
-                (dificuldade e limite: só o líder · linguagem: todos votam)
+              <span className="text-[10px] text-text-dim ms-2">
+                {t("lobby.settingsHint")}
               </span>
             )}
           </div>
@@ -124,7 +123,7 @@ export function Lobby({
             <div>
               <div className="flex items-baseline justify-between gap-2 flex-wrap">
                 <label className="label" id="lobby-lang-label">
-                  linguagem — votação
+                  {t("lobby.languageVote")}
                 </label>
                 <span className="text-[10px] font-mono text-text-dim normal-case">
                   {voteSummary}
@@ -147,12 +146,12 @@ export function Lobby({
                 />
               </div>
               <p className="text-[10px] text-text-dim mt-1 normal-case text-center">
-                todos votam · você pode trocar até o início · a mais votada vence
+                {t("lobby.voteHint")}
               </p>
             </div>
 
             <div>
-              <label className="label">dificuldade</label>
+              <label className="label">{t("common.difficulty")}</label>
               <div className="mt-2 grid grid-cols-3 gap-1.5">
                 {DIFFICULTIES.map(d => {
                   const active = room.settings.difficulty === d.id;
@@ -170,9 +169,9 @@ export function Lobby({
                           : "border-bg-line text-text-muted hover:text-text hover:border-text-dim disabled:hover:border-bg-line disabled:hover:text-text-muted")
                       }
                     >
-                      <div className="font-bold">{d.label}</div>
+                      <div className="font-bold">{t(`difficulty.${d.id}.label` as const)}</div>
                       <div className="text-[10px] mt-0.5 text-text-dim normal-case">
-                        {d.desc}
+                        {t(`difficulty.${d.id}.desc` as const)}
                       </div>
                     </button>
                   );
@@ -182,7 +181,7 @@ export function Lobby({
 
             <div>
               <label className="label">
-                jogadores máx ({room.settings.maxPlayers})
+                {t("common.maxPlayers", { n: room.settings.maxPlayers })}
               </label>
               <input
                 type="range"
@@ -209,7 +208,7 @@ export function Lobby({
                   disabled={!allReady}
                   className="btn-primary flex-1 py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Play className="size-4" /> Iniciar partida
+                  <Play className="size-4" /> {t("lobby.start")}
                 </motion.button>
               ) : (
                 // Destaque do CTA (issue #71): quando NÃO está pronto, é o botão
@@ -228,27 +227,27 @@ export function Lobby({
                 >
                   {myReady ? (
                     <>
-                      <Check className="size-4" /> pronto!
+                      <Check className="size-4" /> {t("lobby.readyDone")}
                     </>
                   ) : (
                     <>
-                      <Zap className="size-4" /> Ficar pronto
+                      <Zap className="size-4" /> {t("lobby.getReady")}
                     </>
                   )}
                 </button>
               )}
               <button onClick={copyLink} className="btn-secondary py-3">
                 <Share2 className="size-4" />
-                Compartilhar
+                {t("common.share")}
               </button>
             </div>
             {isLeader && (
               <p className="mt-2 text-center text-[11px] font-mono text-text-dim">
                 {others.length === 0
-                  ? "// sem outros jogadores — inicie quando quiser"
+                  ? t("lobby.noOthers")
                   : allReady
-                  ? "// todos prontos! manda ver 🚀"
-                  : `// prontos: ${readyCount}/${others.length} — aguardando todos marcarem pronto`}
+                  ? t("lobby.allReady")
+                  : t("lobby.readyCount", { ready: readyCount, total: others.length })}
               </p>
             )}
           </div>
@@ -262,7 +261,7 @@ export function Lobby({
         >
           <div className="flex items-center gap-2 mb-3">
             <Users className="size-4 text-text-muted" />
-            <span className="label">na sala</span>
+            <span className="label">{t("lobby.inRoom")}</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {room.players.map(p => (
@@ -276,9 +275,9 @@ export function Lobby({
                 {isLeader && p.id !== meId && p.id !== room.leaderId && (
                   <button
                     onClick={() => onKick(p.id)}
-                    title={`Remover ${p.name} da sala`}
-                    aria-label={`Remover ${p.name} da sala`}
-                    className="absolute -top-2 -right-2 z-10 grid size-5 place-items-center rounded-full border border-neon-red/40 bg-bg-card text-neon-red opacity-0 transition hover:bg-neon-red/15 group-hover:opacity-100"
+                    title={t("lobby.kick", { name: p.name })}
+                    aria-label={t("lobby.kick", { name: p.name })}
+                    className="absolute -top-2 -end-2 z-10 grid size-5 place-items-center rounded-full border border-neon-red/40 bg-bg-card text-neon-red opacity-0 transition hover:bg-neon-red/15 group-hover:opacity-100"
                   >
                     <X className="size-3" />
                   </button>
@@ -307,19 +306,19 @@ export function Lobby({
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-sm font-medium" style={{ color: p.color }}>
                     {p.name}
-                    {p.id === meId && <span className="text-text-dim ml-1 text-xs">(você)</span>}
+                    {p.id === meId && <span className="text-text-dim ms-1 text-xs">{t("common.youWord")}</span>}
                   </div>
                   <div className="text-[10px] flex items-center gap-1">
                     {p.id === room.leaderId ? (
                       <span className="inline-flex items-center gap-1 text-neon-amber">
-                        <Crown className="size-2.5" /> líder
+                        <Crown className="size-2.5" /> {t("common.leader")}
                       </span>
                     ) : p.ready ? (
                       <span className="inline-flex items-center gap-1 text-neon-green">
-                        <Check className="size-2.5" /> pronto
+                        <Check className="size-2.5" /> {t("common.ready")}
                       </span>
                     ) : (
-                      <span className="text-text-dim">aguardando...</span>
+                      <span className="text-text-dim">{t("lobby.waiting")}</span>
                     )}
                   </div>
                 </div>

@@ -1,8 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useI18n } from "@/i18n/client";
+import { playTick } from "@/lib/sound";
 
 export function Countdown({ n }: { n: number }) {
+  const { t } = useI18n();
+  // Bipe a cada número (o "GO" toca quando a pista aparece, no Race).
+  useEffect(() => {
+    if (n > 0) playTick();
+  }, [n]);
   const label = n > 0 ? String(n) : "GO!";
   const color =
     n === 0 ? "text-neon-green glow-text-green" : "text-neon-cyan glow-text-cyan";
@@ -20,7 +28,7 @@ export function Countdown({ n }: { n: number }) {
           {label}
         </div>
         <p className="mt-4 text-text-muted text-sm tracking-widest uppercase">
-          {n > 0 ? "prepare seus dedos..." : "vai vai vai!"}
+          {n > 0 ? t("countdown.getSet") : t("countdown.go")}
         </p>
       </motion.div>
     </AnimatePresence>

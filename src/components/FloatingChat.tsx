@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send } from "lucide-react";
 import type { ChatMessage, Player } from "@/lib/types";
+import { useI18n } from "@/i18n/client";
 
 // During a race the chat isn't a panel — messages pop in on the right as little
 // colored tags (each in its sender's color) that float up and fade away.
@@ -20,6 +21,7 @@ export function FloatingChat({
   meId: string;
   onSend: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [active, setActive] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const seen = useRef<Set<string>>(new Set());
@@ -63,7 +65,7 @@ export function FloatingChat({
               >
                 {isSystem ? (
                   <span className="inline-block rounded-full border border-bg-line bg-bg-card/80 px-3 py-1 text-[11px] font-mono italic text-text-dim backdrop-blur">
-                    {"// "}{m.text}
+                    {"// "}{m.sysKey ? t(`chat.${m.sysKey}` as const, m.sysVars) : m.text}
                   </span>
                 ) : (
                   <span
@@ -72,7 +74,7 @@ export function FloatingChat({
                   >
                     <span className="font-bold" style={{ color }}>
                       {m.name}
-                      {mine && " (você)"}
+                      {mine && t("common.you")}
                     </span>
                     <span className="text-text-muted"> › </span>
                     <span className="text-text [overflow-wrap:anywhere]">{m.text}</span>
@@ -97,11 +99,12 @@ export function FloatingChat({
         <input
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="// provoca a galera..."
+          placeholder={t("chat.floatingPlaceholder")}
+          aria-label={t("chat.title")}
           maxLength={200}
           className="input bg-bg-card/70 py-1.5 text-xs backdrop-blur"
         />
-        <button type="submit" className="btn-primary px-2.5 py-1.5" aria-label="Enviar mensagem">
+        <button type="submit" className="btn-primary px-2.5 py-1.5" aria-label={t("chat.send")}>
           <Send className="size-3.5" />
         </button>
       </form>

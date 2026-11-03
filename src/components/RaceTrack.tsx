@@ -3,7 +3,8 @@
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import type { Player } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 const TRACK_HEIGHT_PER_PLAYER = 34;
 
@@ -26,6 +27,7 @@ export function RaceTrack({
   /** Presente só para o líder: expulsa um griefer sem sair da corrida (#66). */
   onKick?: (targetId: string) => void;
 }) {
+  const { t } = useI18n();
   // Finished first (by place), then who's still racing (by progress), then who gave up.
   const sorted = [...players].sort((a, b) => {
     const A = classify(a);
@@ -53,9 +55,9 @@ export function RaceTrack({
       }
     >
       <div className="flex items-center justify-between mb-2 md:mb-3">
-        <span className="label">{"// posição em tempo real"}</span>
+        <span className="label">{t("track.title")}</span>
         <span className="text-[10px] text-text-dim">
-          {doneCount}/{sorted.length} terminaram
+          {t("track.finishedCount", { done: doneCount, total: sorted.length })}
         </span>
       </div>
 
@@ -82,7 +84,7 @@ export function RaceTrack({
               <div className="flex items-center gap-2 mb-0.5">
                 <span
                   className="text-[10px] font-mono w-5 text-text-dim text-right"
-                  aria-label={`posição ${idx + 1}`}
+                  aria-label={t("track.position", { n: idx + 1 })}
                 >
                   {finished
                     ? p.place === 1
@@ -101,24 +103,24 @@ export function RaceTrack({
                   style={{ color: abandoned ? "#7d8590" : p.color, fontWeight: isMe ? 700 : 500 }}
                 >
                   {p.name}
-                  {isMe && " (você)"}
+                  {isMe && t("common.you")}
                 </span>
                 <span className="text-[10px] text-text-dim ml-auto flex items-center gap-2">
                   <span>{Math.round(p.wpm)} wpm</span>
                   <span className="text-text-dim">·</span>
                   <span>{Math.round(p.accuracy)}%</span>
                   {finished && (
-                    <span className="ml-1 font-semibold text-neon-green">✓ terminou</span>
+                    <span className="ms-1 font-semibold text-neon-green">{t("track.finished")}</span>
                   )}
                   {abandoned && (
-                    <span className="ml-1 font-semibold text-neon-red/80">desistiu</span>
+                    <span className="ms-1 font-semibold text-neon-red/80">{t("track.abandoned")}</span>
                   )}
                 </span>
                 {onKick && !isMe && p.id !== leaderId && (
                   <button
                     onClick={() => onKick(p.id)}
-                    title={`Remover ${p.name} da sala`}
-                    aria-label={`Remover ${p.name} da sala`}
+                    title={t("lobby.kick", { name: p.name })}
+                    aria-label={t("lobby.kick", { name: p.name })}
                     className="grid size-4 shrink-0 place-items-center rounded-full border border-neon-red/40 text-neon-red opacity-60 transition hover:bg-neon-red/15 hover:opacity-100"
                   >
                     <X className="size-2.5" />

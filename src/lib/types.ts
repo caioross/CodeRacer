@@ -22,6 +22,9 @@ export interface ChatMessage {
   text: string;
   at: number;
   system?: boolean;
+  /** Mensagem de sistema traduzível (`chat.<sysKey>` com `sysVars`); `text` fica como texto pt de reserva. */
+  sysKey?: "joined" | "left" | "kicked";
+  sysVars?: Record<string, string>;
 }
 
 export interface Snippet {

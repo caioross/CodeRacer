@@ -9,6 +9,11 @@ import { TypingCore } from "./TypingCore";
 import { LANGUAGES, DIFFICULTIES, type LangId, type Difficulty } from "@/lib/languages";
 import { exclusionFor, type PracticeRound } from "@/lib/practiceExclusion";
 import type { Snippet } from "@/lib/types";
+import { useI18n } from "@/i18n/client";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { Confetti } from "./effects/Confetti";
+import { playFanfare } from "@/lib/sound";
+import { readBest, writeBest } from "@/lib/personalBest";
 
 // Treino Livre (issue #25, fatia do epic #24): corrida solo sem sala, sem
 // Realtime e sem persistência — zero chamadas a /api/rooms ou Supabase.
@@ -16,6 +21,11 @@ import type { Snippet } from "@/lib/types";
 // Conselho) e o snippet vem de GET /api/snippet (pool server-side).
 // Sem animações de entrada: nada a suprimir sob prefers-reduced-motion.
 export function PracticeView() {
+  const { t, tp, apiError } = useI18n();
+  // `t` muda de identidade só quando o idioma muda; o loader lê a versão atual por ref
+  // para não refazer o sorteio (e zerar o treino) ao trocar de idioma.
+  const tRef = useRef({ t, apiError });
+  tRef.current = { t, apiError };
   // Dificuldade default Fácil — porta de entrada do Iniciante (#16, spec §0.3).
   const [language, setLanguage] = useState<LangId>("javascript");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
@@ -55,7 +65,11 @@ export function PracticeView() {
       const json = await res.json().catch(() => ({}));
       if (seq !== fetchSeq.current) return; // resposta antiga — descarta
       if (!json?.ok || !json.snippet) {
-        setError(json?.error || "Não deu para sortear um snippet — tenta de novo.");
+        setError(
+          json?.error
+            ? tRef.current.apiError(json.error, "practice.loadError")
+            : tRef.current.t("practice.loadError")
+        );
         setSnippet(null);
       } else {
         const picked = json.snippet as Snippet;
@@ -67,7 +81,7 @@ export function PracticeView() {
       }
     } catch {
       if (seq !== fetchSeq.current) return;
-      setError("Sem conexão com o servidor — tenta de novo.");
+      setError(tRef.current.t("common.noConnection"));
       setSnippet(null);
     }
     setLoading(false);
@@ -98,34 +112,55 @@ export function PracticeView() {
   const done = finishedAt != null;
   const elapsedS = done && startedAt != null ? (finishedAt - startedAt) / 1000 : 0;
 
+  // Recorde pessoal por linguagem+nível (localStorage, só neste navegador). Lido quando o
+  // snippet chega; ao terminar compara e grava. 0 erros não é exigido: vale o WPM.
+  const [prevBest, setPrevBest] = useState<number | null>(null);
+  const [newBest, setNewBest] = useState(false);
+  useEffect(() => {
+    setPrevBest(readBest(language, difficulty));
+    setNewBest(false);
+  }, [round, language, difficulty]);
+  useEffect(() => {
+    if (!done || stats.wpm <= 0) return;
+    if (prevBest == null || stats.wpm > prevBest) {
+      setNewBest(true);
+      writeBest(language, difficulty, stats.wpm);
+      if (prevBest != null) playFanfare(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, stats.wpm]);
+
   return (
     <main className="relative min-h-screen">
       <MatrixRain opacity={0.04} />
 
       <header className="relative z-10 flex items-center justify-between px-4 md:px-6 py-3 border-b border-bg-line bg-bg/50 backdrop-blur">
-        <Link href="/" className="flex items-center gap-2" aria-label="Voltar para a home">
+        <Link href="/" className="flex items-center gap-2" aria-label={t("common.backHome")}>
           <Logo size="sm" />
         </Link>
-        <Link href="/" className="btn-secondary px-3 py-1.5 text-xs">
-          <Home className="size-3.5" /> home
-        </Link>
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <Link href="/" className="btn-secondary px-3 py-1.5 text-xs">
+            <Home className="size-3.5" /> {t("common.home")}
+          </Link>
+        </div>
       </header>
 
       <div className="relative z-10 mx-auto max-w-5xl px-4 md:px-6 py-6 space-y-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight gradient-text">
-            Treino Livre
+            {t("practice.title")}
           </h1>
           <p className="text-xs font-mono text-text-muted">
             <span className="text-neon-green">{"// "}</span>
-            só você e o código — o cronômetro dispara na primeira tecla
+            {t("practice.subtitle")}
           </p>
         </div>
 
         {/* config: linguagem + dificuldade (mesmo padrão do modal de criar sala) */}
         <div className="card p-4 space-y-4">
           <div>
-            <label className="label">linguagem</label>
+            <label className="label">{t("common.language")}</label>
             <div className="mt-2 grid grid-cols-4 sm:grid-cols-7 gap-1.5">
               {LANGUAGES.map(l => (
                 <button
@@ -147,7 +182,7 @@ export function PracticeView() {
           </div>
 
           <div>
-            <label className="label">dificuldade</label>
+            <label className="label">{t("common.difficulty")}</label>
             <div className="mt-2 grid grid-cols-3 gap-1.5">
               {DIFFICULTIES.map(d => (
                 <button
@@ -160,8 +195,10 @@ export function PracticeView() {
                       : "border-bg-line text-text-muted hover:text-text hover:border-text-dim")
                   }
                 >
-                  <div className="font-bold">{d.label}</div>
-                  <div className="text-[10px] mt-0.5 text-text-dim normal-case">{d.desc}</div>
+                  <div className="font-bold">{t(`difficulty.${d.id}.label` as const)}</div>
+                  <div className="text-[10px] mt-0.5 text-text-dim normal-case">
+                    {t(`difficulty.${d.id}.desc` as const)}
+                  </div>
                 </button>
               ))}
             </div>
@@ -170,9 +207,10 @@ export function PracticeView() {
 
         {/* treino concluído: stats + jogar de novo (sem recarregar a página) */}
         {done && (
-          <div className="card neon-border p-4">
+          <div className="card neon-border p-4 relative">
+            {newBest && prevBest != null && <Confetti seed={round} />}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="label">{"// treino concluído"}</span>
+              <span className="label">{t("practice.done")}</span>
               <span className="inline-flex items-center gap-1.5 font-mono text-sm text-neon-green">
                 <Zap className="size-3.5" /> {stats.wpm} WPM
               </span>
@@ -180,20 +218,29 @@ export function PracticeView() {
                 <Target className="size-3.5" /> {stats.accuracy}%
               </span>
               <span className="inline-flex items-center gap-1.5 font-mono text-sm text-text-muted">
-                ⛔ {stats.errors} erros
+                ⛔ {tp("practice.errorsCount", stats.errors)}
               </span>
               <span className="inline-flex items-center gap-1.5 font-mono text-sm text-text-muted">
                 <Timer className="size-3.5" /> {elapsedS.toFixed(1)}s
               </span>
-              <div className="ml-auto flex flex-wrap items-center gap-2">
+              {newBest ? (
+                <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-neon-violet">
+                  🏆 {t("practice.newBest")}
+                </span>
+              ) : prevBest != null ? (
+                <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-dim">
+                  {t("practice.best", { wpm: prevBest })}
+                </span>
+              ) : null}
+              <div className="ms-auto flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => loadSnippet(language, difficulty)}
                   className="btn-primary px-3 py-1.5 text-xs"
                 >
-                  <RotateCcw className="size-3.5" /> treinar de novo
+                  <RotateCcw className="size-3.5" /> {t("practice.again")}
                 </button>
                 <Link href="/" className="btn-secondary px-3 py-1.5 text-xs">
-                  <Users className="size-3.5" /> criar sala com amigos
+                  <Users className="size-3.5" /> {t("practice.withFriends")}
                 </Link>
               </div>
             </div>
@@ -213,7 +260,7 @@ export function PracticeView() {
               onClick={() => loadSnippet(language, difficulty)}
               className="text-neon-green underline-offset-2 hover:underline"
             >
-              tentar de novo
+              {t("common.tryAgain")}
             </button>
           </div>
         ) : snippet ? (
@@ -225,7 +272,7 @@ export function PracticeView() {
             finishedAt={finishedAt}
             onStart={handleStart}
             onProgress={handleProgress}
-            finishedPlaceholder="✅ terminou! bora treinar de novo?"
+            finishedPlaceholder={t("practice.finishedPlaceholder")}
           />
         ) : null}
       </div>

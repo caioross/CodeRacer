@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useReducedMotion } from "framer-motion";
+import { useI18n } from "@/i18n/client";
 
 // A mini editor that auto-types real code with a blinking caret, looping
 // through a few languages. Shows the game in action on the title screen.
@@ -68,6 +69,7 @@ const DEMOS: Demo[] = [
 ];
 
 export function TypingDemo() {
+  const { t } = useI18n();
   const reduced = useReducedMotion();
   const [demo, setDemo] = useState(0);
   const [n, setN] = useState(0);
@@ -117,7 +119,7 @@ export function TypingDemo() {
   const visible = flat.slice(0, n);
 
   return (
-    <div className="card overflow-hidden text-left">
+    <div className="card overflow-hidden text-left" dir="ltr">
       <div className="flex items-center justify-between border-b border-bg-line px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="flex gap-1">
@@ -128,7 +130,7 @@ export function TypingDemo() {
           <span className="ml-2 font-mono text-xs text-text-muted">demo.{DEMOS[demo].lang}</span>
         </div>
         <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-neon-green">
-          <span className="size-1.5 rounded-full bg-neon-green animate-pulse" /> ao vivo
+          <span className="size-1.5 rounded-full bg-neon-green animate-pulse" /> {t("demo.live")}
         </span>
       </div>
       <div className="min-h-[116px] whitespace-pre px-4 py-4 font-mono text-sm leading-7">

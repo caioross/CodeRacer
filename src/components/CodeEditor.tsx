@@ -5,9 +5,10 @@ import { AlertTriangle, Flag, Minus, Plus, Settings2, Volume2, VolumeX, WrapText
 import { langById } from "@/lib/languages";
 import { tokColor, tokenize } from "@/lib/highlight";
 import { enterEdit, indentEdit } from "@/lib/indent";
-import { isMuted, playKey, setMuted } from "@/lib/sound";
+import { isMuted, playError, playKey, setMuted } from "@/lib/sound";
 import { useEditorFont } from "@/lib/useEditorFont";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 // VSCode-like typing surface with live syntax highlighting: a transparent
 // textarea sits over a colored <pre> mirror (perfectly aligned metrics).
@@ -26,7 +27,7 @@ function CodeEditorImpl({
   target,
   onAbandon,
   errorPulse = 0,
-  finishedPlaceholder = "✅ terminou! veja a posição dos outros..."
+  finishedPlaceholder
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -43,6 +44,7 @@ function CodeEditorImpl({
    *  Practice (issue #25, sem sala) passa uma versão solo coerente. */
   finishedPlaceholder?: string;
 }) {
+  const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -180,6 +182,8 @@ function CodeEditorImpl({
   return (
     <div
       ref={cardRef}
+      // Código é sempre da esquerda para a direita, mesmo com a interface em árabe.
+      dir="ltr"
       className={cn("card flex flex-col overflow-hidden", errorActive && "editor-error")}
     >
       {/* title bar */}
@@ -191,7 +195,7 @@ function CodeEditorImpl({
             <span className="size-2.5 rounded-full bg-neon-green/70" />
           </span>
           <span className="ml-2 text-text-muted">
-            {disabled ? "// você terminou!" : `digite.${language}`}
+            {disabled ? t("typing.youFinished") : `digite.${language}`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -203,8 +207,8 @@ function CodeEditorImpl({
           <button
             onClick={toggleSound}
             className="grid size-5 place-items-center text-text-muted hover:text-text"
-            aria-label={soundOn ? "Desligar som" : "Ligar som"}
-            title={soundOn ? "Som: ligado" : "Som: desligado"}
+            aria-label={soundOn ? t("typing.soundOff") : t("typing.soundOn")}
+            title={soundOn ? t("typing.soundIsOn") : t("typing.soundIsOff")}
           >
             {soundOn ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
           </button>
@@ -212,8 +216,8 @@ function CodeEditorImpl({
             <button
               onClick={() => setOptionsOpen(o => !o)}
               className="grid size-5 place-items-center text-text-muted hover:text-text"
-              aria-label="Opções do editor"
-              title="Opções"
+              aria-label={t("typing.editorOptions")}
+              title={t("typing.options")}
             >
               <Settings2 className="size-3.5" />
             </button>
@@ -225,15 +229,15 @@ function CodeEditorImpl({
                   className="fixed inset-0 z-10 cursor-default"
                   onClick={() => setOptionsOpen(false)}
                 />
-                <div className="absolute right-0 top-7 z-20 w-48 rounded-md border border-bg-line bg-bg-card p-1.5 text-[11px] shadow-glow">
+                <div className="absolute end-0 top-7 z-20 w-48 rounded-md border border-bg-line bg-bg-card p-1.5 text-[11px] shadow-glow">
                   <div className="flex items-center justify-between px-1.5 py-1">
-                    <span className="text-text-muted">tamanho da fonte</span>
+                    <span className="text-text-muted">{t("typing.fontSize")}</span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={shrinkFont}
                         disabled={fontSize <= minFont}
                         className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim disabled:opacity-40 disabled:hover:border-bg-line"
-                        aria-label="Diminuir fonte"
+                        aria-label={t("typing.fontDown")}
                       >
                         <Minus className="size-3" />
                       </button>
@@ -241,7 +245,7 @@ function CodeEditorImpl({
                       <button
                         onClick={growFont}
                         className="grid size-5 place-items-center rounded border border-bg-line hover:border-text-dim"
-                        aria-label="Aumentar fonte"
+                        aria-label={t("typing.fontUp")}
                       >
                         <Plus className="size-3" />
                       </button>
@@ -252,10 +256,10 @@ function CodeEditorImpl({
                     className="flex w-full items-center justify-between rounded px-1.5 py-1 hover:bg-bg-soft/60"
                   >
                     <span className="inline-flex items-center gap-1.5 text-text-muted">
-                      <WrapText className="size-3" /> quebrar linha
+                      <WrapText className="size-3" /> {t("typing.wrap")}
                     </span>
                     <span className={wrap ? "text-neon-green" : "text-text-dim"}>
-                      {wrap ? "on" : "off"}
+                      {wrap ? t("typing.on") : t("typing.off")}
                     </span>
                   </button>
                 </div>
@@ -297,7 +301,7 @@ function CodeEditorImpl({
               aria-hidden
               className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-1 rounded-md border border-neon-red/50 bg-neon-red/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-neon-red"
             >
-              <AlertTriangle className="size-3" /> erro
+              <AlertTriangle className="size-3" /> {t("typing.error")}
             </div>
           )}
           {showGutter && !disabled && (
@@ -328,7 +332,13 @@ function CodeEditorImpl({
             ref={taRef}
             value={value}
             onChange={e => {
-              if (e.target.value.length > value.length) playKey();
+              // Tecla errada soa diferente (o "thunk" existia em sound.ts mas nunca tocava).
+              const nv = e.target.value;
+              if (nv.length > value.length) {
+                const i = nv.length - 1;
+                if (nv[i] === target[i]) playKey();
+                else playError();
+              }
               onChange(e.target.value);
               syncCaret();
             }}
@@ -346,11 +356,15 @@ function CodeEditorImpl({
             autoCorrect="off"
             autoComplete="off"
             autoCapitalize="off"
+            aria-label={t("typing.inputAria")}
+            dir="ltr"
             disabled={disabled}
             wrap={wrap ? "soft" : "off"}
             className="absolute inset-0 resize-none bg-transparent px-4 py-4 text-transparent caret-neon-green outline-none placeholder:text-text-dim disabled:opacity-50"
             style={{ ...sharedStyle, caretColor: "#00ff88", color: "transparent" }}
-            placeholder={disabled ? finishedPlaceholder : "$ comece a digitar..."}
+            placeholder={
+              disabled ? finishedPlaceholder ?? t("typing.finishedPlaceholder") : t("typing.placeholder")
+            }
           />
         </div>
       </div>
@@ -361,12 +375,12 @@ function CodeEditorImpl({
           <span className="tabular-nums">
             Ln {caret.line}, Col {caret.col}
           </span>
-          <span className="tabular-nums">{value.length} chars</span>
-          <span className="hidden sm:inline">paste off · backspace não pontua</span>
+          <span className="tabular-nums">{t("typing.chars", { n: value.length })}</span>
+          <span className="hidden sm:inline">{t("typing.rules")}</span>
         </div>
         {onAbandon && (
           <button onClick={onAbandon} className="btn-danger text-[10px] px-2 py-0.5">
-            <Flag className="size-3" /> desistir
+            <Flag className="size-3" /> {t("typing.forfeit")}
           </button>
         )}
       </div>

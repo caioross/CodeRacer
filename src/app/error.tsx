@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Home, RotateCcw, TriangleAlert } from "lucide-react";
+import { useI18n } from "@/i18n/client";
 
 export default function Error({
   error,
@@ -11,6 +12,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     // Surface the error for debugging in the console / monitoring.
     console.error(error);
@@ -25,12 +27,12 @@ export default function Error({
         </div>
 
         <h1 className="font-mono font-extrabold text-4xl md:text-5xl text-text">
-          algo quebrou na pista
+          {t("error.title")}
         </h1>
 
         <p className="mt-4 text-text-muted text-sm font-mono">
           <span className="text-neon-green">{"// "}</span>
-          um erro inesperado tirou você da corrida. tenta de novo?
+          {t("error.text")}
         </p>
 
         {error?.digest && (
@@ -42,11 +44,11 @@ export default function Error({
         <div className="mt-8 flex items-center justify-center gap-3">
           <button onClick={reset} className="btn-primary px-6 py-3">
             <RotateCcw className="size-4" />
-            tentar de novo
+            {t("common.tryAgain")}
           </button>
           <Link href="/" className="btn-secondary px-5 py-3 inline-flex">
             <Home className="size-4" />
-            home
+            {t("common.home")}
           </Link>
         </div>
       </div>
