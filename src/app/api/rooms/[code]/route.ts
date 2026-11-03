@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { broadcastRealtime, getServerSupabase } from "@/lib/supabase";
+import { broadcastRealtime, getServerSupabase, publishRoomChange } from "@/lib/supabase";
 import { persistMatch } from "@/lib/persistMatch";
 import { pickSnippet } from "@/lib/snippets";
 import {
@@ -77,6 +77,10 @@ async function applyRoomUpdate(
  */
 async function broadcastRoom(code: string, row: RoomRow | null | undefined): Promise<void> {
   if (!row) return;
+  // Tempo real próprio: a linha confirmada vira o `postgres_changes` que o
+  // Supabase emitiria sozinho (no-op no modo supabase). Todas as mutações de sala
+  // passam por aqui com a linha que o `.select()` devolveu.
+  publishRoomChange(row);
   await broadcastRealtime(`coderacer:room:${code}`, "room", {
     code,
     updated_at: row.updated_at

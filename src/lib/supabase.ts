@@ -2,7 +2,10 @@
 // Runs only on the server — uses the service-role key (or anon as fallback),
 // never shipped to the browser.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { MAX_PLAUSIBLE_WPM } from "./room";
+import { MAX_PLAUSIBLE_WPM, type RoomRow } from "./room";
+import { getHub } from "./realtime/hub";
+import { realtimeMode } from "./realtime/mode";
+import { roomTopic, type RowEventType } from "./realtime/protocol";
 
 let client: SupabaseClient | null = null;
 
@@ -45,6 +48,11 @@ export async function broadcastRealtime(
   event: string,
   payload: unknown
 ): Promise<boolean> {
+  // Tempo real próprio (NEXT_PUBLIC_REALTIME=local): o hub mora neste mesmo processo.
+  if (realtimeMode() === "local") {
+    getHub().publish(topic, event, payload);
+    return true;
+  }
   const cred = serverCredentials();
   if (!cred) return false;
   const ctrl = new AbortController();
@@ -70,6 +78,28 @@ export async function broadcastRealtime(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Com o tempo real próprio, faz o papel do `postgres_changes` do Supabase: entrega
+ * a linha de `rooms` recém-confirmada a quem assina a sala. No Supabase isso sai
+ * do WAL sozinho, então aqui é no-op. Só as rotas de sala chamam, e sempre com a
+ * linha que o banco DEVOLVEU (`.select()` depois do update) — nunca com dado de cliente.
+ */
+export function publishRoomChange(
+  row: RoomRow | null | undefined,
+  eventType: RowEventType = "UPDATE"
+): void {
+  if (realtimeMode() !== "local" || !row?.code) return;
+  getHub().publishRow(roomTopic(row.code), {
+    schema: "public",
+    table: "rooms",
+    commit_timestamp: new Date().toISOString(),
+    eventType,
+    new: row as unknown as Record<string, unknown>,
+    old: {},
+    errors: null
+  });
 }
 
 export type LeaderRow = {

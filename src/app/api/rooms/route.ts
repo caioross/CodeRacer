@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import { customAlphabet } from "nanoid";
-import { getServerSupabase } from "@/lib/supabase";
-import { resolveDifficulty, resolveLang, ABSOLUTE_MAX_PLAYERS } from "@/lib/room";
+import { getServerSupabase, publishRoomChange } from "@/lib/supabase";
+import {
+  resolveDifficulty,
+  resolveLang,
+  ABSOLUTE_MAX_PLAYERS,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  type RoomRow
+} from "@/lib/room";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Friendly room codes — uppercase, no confusing chars.
-const newRoomCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
+// Friendly room codes — uppercase, no confusing chars (fonte única em room.ts).
+const newRoomCode = customAlphabet(ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH);
 
 // GET /api/rooms → list open public rooms for the home browser.
 export async function GET() {
@@ -81,6 +88,8 @@ export async function POST(req: Request) {
       .single();
 
     if (!error && data) {
+      // Tempo real local: o INSERT vira `postgres_changes` como no Supabase (inerte se ninguém assina).
+      publishRoomChange(data as RoomRow, "INSERT");
       return NextResponse.json({ ok: true, code, room: data });
     }
     // 23505 = unique_violation (code already taken) → retry

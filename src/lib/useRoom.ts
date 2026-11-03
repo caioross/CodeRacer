@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { getBrowserSupabase } from "./supabase-browser";
+import { getRealtime } from "./realtime";
 import {
   colorForId,
   newPlayerId,
@@ -131,7 +131,8 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
     connectedRef.current = true;
     setPhase("connecting");
 
-    const supabase = getBrowserSupabase();
+    // Supabase Realtime ou o transporte próprio (NEXT_PUBLIC_REALTIME=local) — ver src/lib/realtime/.
+    const realtime = getRealtime();
 
     // Recover or mint identity.
     let id = newPlayerId();
@@ -185,7 +186,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
         return;
       }
 
-      const channel = supabase.channel(`coderacer:room:${code}`, {
+      const channel = realtime.channel(`coderacer:room:${code}`, {
         config: { presence: { key: id }, broadcast: { self: false } }
       });
       channelRef.current = channel;
@@ -383,7 +384,7 @@ export function useRoom(code: string, opts: UseRoomOpts = {}) {
       const ch = channelRef.current;
       channelRef.current = null;
       connectedRef.current = false;
-      if (ch) supabase.removeChannel(ch);
+      if (ch) realtime.removeChannel(ch);
     };
   }, [joinName, code, fail]);
 
